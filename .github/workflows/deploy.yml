@@ -25,7 +25,7 @@ jobs:
           node-version: 24
           
       - name: Instalar as dependências do projeto
-        run: npm install
+        run: npm install --legacy-peer-deps
         
       - name: Compilar o código para Produção
         run: npx vite build --base=/gerenc.lthac/
