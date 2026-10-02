@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aplicativo - Controle de Acesso</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #1e293b;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; }
+    
+    .container { max-width: 800px; margin: 0 auto; }
+    .card { background: var(--surface); padding: 24px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: 500; }
+    input[type="email"], input[type="password"], input[type="text"] {
+      width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
+    }
+    button {
+      background: var(--primary); color: white; border: none; padding: 10px 20px;
+      border-radius: 6px; cursor: pointer; font-weight: 600;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    .tabs { display: flex; gap: 10px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+    .tab-btn { background: none; border: none; padding: 10px 15px; color: var(--text); cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab-btn.active { border-bottom-color: var(--primary); font-weight: bold; color: var(--primary); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 15px; }
+    .badge-admin { background: #dcfce7; color: #166534; }
+    .badge-user { background: #e0f2fe; color: #075985; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- TELA DE LOGIN -->
+    <div id="screen-login" class="card">
+      <h2>Entrar no Sistema</h2>
+      <form id="login-form" style="margin-top: 15px;">
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" id="login-email" required placeholder="seuemail@exemplo.com" />
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" id="login-password" required placeholder="******" />
+        </div>
+        <button type="submit">Entrar</button>
+      </form>
+      <p id="login-error" style="color: red; margin-top: 10px; font-size: 14px;"></p>
+    </div>
+
+    <!-- PAINEL DO APLICATIVO -->
+    <div id="screen-app" class="hidden">
+      <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <p id="user-display-email" style="font-weight: 600;"></p>
+          <span id="user-role-badge" class="badge"></span>
+        </div>
+        <button id="btn-logout" style="background: #ef4444;">Sair</button>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('tab-dashboard')">Painel Geral</button>
+        <button class="tab-btn" onclick="switchTab('tab-dados')">Dados do Aluno</button>
+        <button class="tab-btn" id="menu-certificado" onclick="switchTab('tab-certificado')">📜 Certificados</button>
+      </div>
+
+      <div id="tab-dashboard" class="tab-content card active">
+        <h3>Painel Geral</h3>
+        <p>Aberto para leitura por todos os usuários.</p>
+        <div style="margin-top: 15px;">
+          <label>Aviso Geral:</label>
+          <input type="text" id="campo-aviso" value="Bem-vindos ao ano letivo!" class="campo-editavel" />
+          <button class="btn-editar" style="margin-top: 10px;">Salvar Alteração</button>
+        </div>
+      </div>
+
+      <div id="tab-dados" class="tab-content card">
+        <h3>Edição de Formulário</h3>
+        <p>Os botões de salvar só funcionam para a Coordenação.</p>
+        <div style="margin-top: 15px;">
+          <div class="form-group">
+            <label>Nome do Projeto:</label>
+            <input type="text" class="campo-editavel" value="Projeto de Inteligência Artificial" />
+          </div>
+          <button class="btn-editar">Atualizar Registro</button>
+        </div>
+      </div>
+
+      <div id="tab-certificado" class="tab-content card">
+        <h3>Emissão de Certificados</h3>
+        <p>Área restrita exclusivamente para a Coordenação.</p>
+        <button style="margin-top: 15px; background: #16a34a;">Gerar Novo Certificado</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+      getAuth, 
+      signInWithEmailAndPassword, 
+      signOut, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBJzICtjP9tqrrk-VEOW4xvgeAYY9jp_1k",
+      authDomain: "gen-lang-client-0522534070.firebaseapp.com",
+      projectId: "gen-lang-client-0522534070",
+      storageBucket: "gen-lang-client-0522534070.firebasestorage.app",
+      messagingSenderId: "671140185879",
+      appId: "1:671140185879:web:6d54e130f2abee7dfb9952"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    // E-MAIL ÚNICO PERMITIDO PARA EDITAR E VER CERTIFICADOS
+    const EMAILS_COORDENACAO = [
+      "lthac20@gmail.com"
+    ];
+
+    const screenLogin = document.getElementById("screen-login");
+    const screenApp = document.getElementById("screen-app");
+    const loginForm = document.getElementById("login-form");
+    const loginError = document.getElementById("login-error");
+    const btnLogout = document.getElementById("btn-logout");
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      loginError.innerText = "";
+      const email = document.getElementById("login-email").value;
+      const pass = document.getElementById("login-password").value;
+
+      try {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } catch (err) {
+        loginError.innerText = "Erro ao entrar: E-mail ou senha incorretos.";
+      }
+    });
+
+    btnLogout.addEventListener("click", () => signOut(auth));
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const userEmail = user.email.toLowerCase();
+        const isCoord = EMAILS_COORDENACAO.includes(userEmail);
+
+        screenLogin.classList.add("hidden");
+        screenApp.classList.remove("hidden");
+
+        document.getElementById("user-display-email").innerText = userEmail;
+        const roleBadge = document.getElementById("user-role-badge");
+        
+        if (isCoord) {
+          roleBadge.innerText = "Perfil: Coordenação (Acesso Total)";
+          roleBadge.className = "badge badge-admin";
+        } else {
+          roleBadge.innerText = "Perfil: Leitor (Apenas Visualização)";
+          roleBadge.className = "badge badge-user";
+        }
+
+        aplicarPermissoesBlindadas(isCoord);
+      } else {
+        screenLogin.classList.remove("hidden");
+        screenApp.classList.add("hidden");
+      }
+    });
+
+    // Proteção blindada que remove os elementos da página para impedir edições por leitores
+    function aplicarPermissoesBlindadas(isCoord) {
+      const menuCertificado = document.getElementById("menu-certificado");
+      
+      if (!isCoord) {
+        if (menuCertificado) {
+          menuCertificado.remove();
+        }
+
+        document.querySelectorAll(".btn-editar").forEach(btn => btn.remove());
+        document.querySelectorAll(".campo-editavel").forEach(input => {
+          input.readOnly = true;
+          input.setAttribute("tabindex", "-1");
+        });
+      }
+    }
+
+    window.switchTab = function(tabId) {
+      document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+      document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+      
+      const tabTarget = document.getElementById(tabId);
+      if (tabTarget) {
+        tabTarget.classList.add("active");
+        event.currentTarget.classList.add("active");
+      }
+    };
+  </script>
+</body>
+</html>
