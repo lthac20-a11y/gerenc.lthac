@@ -1,0 +1,6 @@
+{
+  "name": "Liga do Trauma Hospital Angelina Caron (LTHAC) - Gestão e Escalas",
+  "description": "Sistema de gestão de escalas de plantão, frequência, reposições e certificados da Liga do Trauma Hospital Angelina Caron (LTHAC).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

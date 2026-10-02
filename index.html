@@ -1,150 +1,22 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gerenciador LTHAC</title>
-  <style>
-    /* Estilos da barra superior de autenticação */
-    #top-bar-auth {
-      background: #1e293b; color: white; padding: 12px 20px;
-      display: flex; justify-content: space-between; align-items: center;
-      font-family: system-ui, -apple-system, sans-serif; font-size: 14px;
-    }
-    #screen-login-container {
-      max-width: 400px; margin: 80px auto; padding: 30px;
-      background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-    .hidden { display: none !important; }
-  </style>
-</head>
-<body>
-
-  <!-- BARRA DE UTILIZADOR (Exibida quando logado) -->
-  <div id="top-bar-auth" class="hidden">
-    <div>
-      <span id="user-display-email" style="font-weight: bold;"></span>
-      <span id="user-role-badge" style="margin-left: 10px; padding: 3px 8px; border-radius: 4px; font-size: 12px;"></span>
-    </div>
-    <button id="btn-logout" style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Sair</button>
-  </div>
-
-  <!-- TELA DE LOGIN -->
-  <div id="screen-login-container">
-    <h2>Acesso ao Sistema</h2>
-    <form id="login-form-system" style="margin-top: 15px;">
-      <div style="margin-bottom: 12px;">
-        <label style="display:block; margin-bottom:4px; font-weight: 500;">E-mail</label>
-        <input type="email" id="login-email-input" required style="width:100%; padding:8px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 4px;" />
-      </div>
-      <div style="margin-bottom: 12px;">
-        <label style="display:block; margin-bottom:4px; font-weight: 500;">Palavra-passe</label>
-        <input type="password" id="login-password-input" required style="width:100%; padding:8px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 4px;" />
-      </div>
-      <button type="submit" style="width:100%; padding:10px; background:#2563eb; color:white; border:none; border-radius:4px; cursor:pointer; font-weight: bold;">Entrar</button>
-    </form>
-    <p id="login-error-msg" style="color:red; margin-top:10px; font-size:13px;"></p>
-  </div>
-
-  <!-- ÁREA DO SEU APLICATIVO ORIGINAL -->
-  <div id="app-original-container" class="hidden">
-    
-    <!-- =================================================================== -->
-    <!--  https://aistudio.google.com/apps/bb0aef7a-d085-4a1c-bc4e-8afd51c05c99?showPreview=true&showAssistant=true&project=gen-lang-client-0522534070      -->
-    <!-- =================================================================== -->
-
-  </div>
-
-  <!-- SISTEMA AUTOMÁTICO DE SEGURANÇA E BLOQUEIO -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { 
-      getAuth, 
-      signInWithEmailAndPassword, 
-      signOut, 
-      onAuthStateChanged 
-    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyBJzICtjP9tqrrk-VEOW4xvgeAYY9jp_1k",
-      authDomain: "gen-lang-client-0522534070.firebaseapp.com",
-      projectId: "gen-lang-client-0522534070",
-      storageBucket: "gen-lang-client-0522534070.firebasestorage.app",
-      messagingSenderId: "671140185879",
-      appId: "1:671140185879:web:6d54e130f2abee7dfb9952"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-
-    // E-mail com permissão total de coordenação
-    const EMAILS_COORDENACAO = ["lthac20@gmail.com"];
-
-    const screenLogin = document.getElementById("screen-login-container");
-    const appContainer = document.getElementById("app-original-container");
-    const topBar = document.getElementById("top-bar-auth");
-
-    document.getElementById("login-form-system").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email = document.getElementById("login-email-input").value;
-      const pass = document.getElementById("login-password-input").value;
-      document.getElementById("login-error-msg").innerText = "";
-
-      try {
-        await signInWithEmailAndPassword(auth, email, pass);
-      } catch (err) {
-        document.getElementById("login-error-msg").innerText = "E-mail ou palavra-passe incorretos.";
-      }
-    });
-
-    document.getElementById("btn-logout").addEventListener("click", () => signOut(auth));
-
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        const email = user.email.toLowerCase();
-        const isCoord = EMAILS_COORDENACAO.includes(email);
-
-        screenLogin.classList.add("hidden");
-        appContainer.classList.remove("hidden");
-        topBar.classList.remove("hidden");
-
-        document.getElementById("user-display-email").innerText = email;
-        const badge = document.getElementById("user-role-badge");
-        badge.innerText = isCoord ? "Coordenação (Acesso Total)" : "Leitor (Apenas Visualização)";
-        badge.style.background = isCoord ? "#22c55e" : "#3b82f6";
-        badge.style.color = "#fff";
-
-        aplicarProtecaoAutomatica(isCoord);
-      } else {
-        screenLogin.classList.remove("hidden");
-        appContainer.classList.add("hidden");
-        topBar.classList.add("hidden");
-      }
-    });
-
-    function aplicarProtecaoAutomatica(isCoord) {
-      if (!isCoord) {
-        // 1. Procura e remove automaticamente qualquer aba, botão ou texto que diga "Certificado"
-        document.querySelectorAll("*").forEach(el => {
-          if (el.children.length === 0 && el.textContent.toLowerCase().includes("certificado")) {
-            let parent = el.closest("button, a, li, .tab, .tab-btn, .menu-item") || el;
-            parent.remove();
-          }
-        });
-
-        // 2. Bloqueia todos os campos de formulário e inputs do seu app
-        appContainer.querySelectorAll("input, textarea, select").forEach(input => {
-          input.readOnly = true;
-          input.disabled = true;
-        });
-
-        // 3. Esconde todos os botões de guardar, editar e submeter do seu app
-        appContainer.querySelectorAll("button, input[type='submit'], .btn, .btn-salvar, .btn-editar").forEach(btn => {
-          btn.style.display = "none";
-        });
-      }
-    }
-  </script>
-</body>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Liga do Trauma Hospital Angelina Caron (LTHAC) - Gestão e Escalas</title>
+    <meta name="description" content="Sistema de gestão de escalas de plantão, frequência, reposições e certificados da Liga do Trauma Hospital Angelina Caron (LTHAC)." />
+    <meta property="og:title" content="Liga do Trauma Hospital Angelina Caron (LTHAC) - Gestão e Escalas" />
+    <meta property="og:description" content="Sistema de gestão de escalas de plantão, frequência, reposições e certificados da Liga do Trauma Hospital Angelina Caron (LTHAC)." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Google Fonts for Academic Certificate and clean UI typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
+
