@@ -3,112 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aplicativo - Controle de Acesso</title>
+  <title>Gerenciador LTHAC</title>
   <style>
-    :root {
-      --primary: #2563eb;
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --text: #1e293b;
-      --border: #e2e8f0;
+    /* Estilos da barra superior de autenticação */
+    #top-bar-auth {
+      background: #1e293b; color: white; padding: 12px 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: system-ui, -apple-system, sans-serif; font-size: 14px;
     }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); padding: 20px; }
-    
-    .container { max-width: 800px; margin: 0 auto; }
-    .card { background: var(--surface); padding: 24px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    
-    .form-group { margin-bottom: 15px; }
-    label { display: block; margin-bottom: 5px; font-weight: 500; }
-    input[type="email"], input[type="password"], input[type="text"] {
-      width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
+    #screen-login-container {
+      max-width: 400px; margin: 80px auto; padding: 30px;
+      background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-family: system-ui, -apple-system, sans-serif;
     }
-    button {
-      background: var(--primary); color: white; border: none; padding: 10px 20px;
-      border-radius: 6px; cursor: pointer; font-weight: 600;
-    }
-    button:hover { opacity: 0.9; }
-    button:disabled { background: #94a3b8; cursor: not-allowed; }
-
-    .tabs { display: flex; gap: 10px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
-    .tab-btn { background: none; border: none; padding: 10px 15px; color: var(--text); cursor: pointer; border-bottom: 2px solid transparent; }
-    .tab-btn.active { border-bottom-color: var(--primary); font-weight: bold; color: var(--primary); }
-
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 15px; }
-    .badge-admin { background: #dcfce7; color: #166534; }
-    .badge-user { background: #e0f2fe; color: #075985; }
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
-  <div class="container">
-    <!-- TELA DE LOGIN -->
-    <div id="screen-login" class="card">
-      <h2>Entrar no Sistema</h2>
-      <form id="login-form" style="margin-top: 15px;">
-        <div class="form-group">
-          <label>E-mail</label>
-          <input type="email" id="login-email" required placeholder="seuemail@exemplo.com" />
-        </div>
-        <div class="form-group">
-          <label>Senha</label>
-          <input type="password" id="login-password" required placeholder="******" />
-        </div>
-        <button type="submit">Entrar</button>
-      </form>
-      <p id="login-error" style="color: red; margin-top: 10px; font-size: 14px;"></p>
+  <!-- BARRA DE UTILIZADOR (Exibida quando logado) -->
+  <div id="top-bar-auth" class="hidden">
+    <div>
+      <span id="user-display-email" style="font-weight: bold;"></span>
+      <span id="user-role-badge" style="margin-left: 10px; padding: 3px 8px; border-radius: 4px; font-size: 12px;"></span>
     </div>
-
-    <!-- PAINEL DO APLICATIVO -->
-    <div id="screen-app" class="hidden">
-      <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <p id="user-display-email" style="font-weight: 600;"></p>
-          <span id="user-role-badge" class="badge"></span>
-        </div>
-        <button id="btn-logout" style="background: #ef4444;">Sair</button>
-      </div>
-
-      <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('tab-dashboard')">Painel Geral</button>
-        <button class="tab-btn" onclick="switchTab('tab-dados')">Dados do Aluno</button>
-        <button class="tab-btn" id="menu-certificado" onclick="switchTab('tab-certificado')">📜 Certificados</button>
-      </div>
-
-      <div id="tab-dashboard" class="tab-content card active">
-        <h3>Painel Geral</h3>
-        <p>Aberto para leitura por todos os usuários.</p>
-        <div style="margin-top: 15px;">
-          <label>Aviso Geral:</label>
-          <input type="text" id="campo-aviso" value="Bem-vindos ao ano letivo!" class="campo-editavel" />
-          <button class="btn-editar" style="margin-top: 10px;">Salvar Alteração</button>
-        </div>
-      </div>
-
-      <div id="tab-dados" class="tab-content card">
-        <h3>Edição de Formulário</h3>
-        <p>Os botões de salvar só funcionam para a Coordenação.</p>
-        <div style="margin-top: 15px;">
-          <div class="form-group">
-            <label>Nome do Projeto:</label>
-            <input type="text" class="campo-editavel" value="Projeto de Inteligência Artificial" />
-          </div>
-          <button class="btn-editar">Atualizar Registro</button>
-        </div>
-      </div>
-
-      <div id="tab-certificado" class="tab-content card">
-        <h3>Emissão de Certificados</h3>
-        <p>Área restrita exclusivamente para a Coordenação.</p>
-        <button style="margin-top: 15px; background: #16a34a;">Gerar Novo Certificado</button>
-      </div>
-    </div>
+    <button id="btn-logout" style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Sair</button>
   </div>
 
+  <!-- TELA DE LOGIN -->
+  <div id="screen-login-container">
+    <h2>Acesso ao Sistema</h2>
+    <form id="login-form-system" style="margin-top: 15px;">
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; margin-bottom:4px; font-weight: 500;">E-mail</label>
+        <input type="email" id="login-email-input" required style="width:100%; padding:8px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 4px;" />
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; margin-bottom:4px; font-weight: 500;">Palavra-passe</label>
+        <input type="password" id="login-password-input" required style="width:100%; padding:8px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 4px;" />
+      </div>
+      <button type="submit" style="width:100%; padding:10px; background:#2563eb; color:white; border:none; border-radius:4px; cursor:pointer; font-weight: bold;">Entrar</button>
+    </form>
+    <p id="login-error-msg" style="color:red; margin-top:10px; font-size:13px;"></p>
+  </div>
+
+  <!-- ÁREA DO SEU APLICATIVO ORIGINAL -->
+  <div id="app-original-container" class="hidden">
+    
+    <!-- =================================================================== -->
+    <!--  https://aistudio.google.com/apps/bb0aef7a-d085-4a1c-bc4e-8afd51c05c99?showPreview=true&showAssistant=true&project=gen-lang-client-0522534070      -->
+    <!-- =================================================================== -->
+
+  </div>
+
+  <!-- SISTEMA AUTOMÁTICO DE SEGURANÇA E BLOQUEIO -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { 
@@ -130,85 +78,73 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
 
-    // E-MAIL ÚNICO PERMITIDO PARA EDITAR E VER CERTIFICADOS
-    const EMAILS_COORDENACAO = [
-      "lthac20@gmail.com"
-    ];
+    // E-mail com permissão total de coordenação
+    const EMAILS_COORDENACAO = ["lthac20@gmail.com"];
 
-    const screenLogin = document.getElementById("screen-login");
-    const screenApp = document.getElementById("screen-app");
-    const loginForm = document.getElementById("login-form");
-    const loginError = document.getElementById("login-error");
-    const btnLogout = document.getElementById("btn-logout");
+    const screenLogin = document.getElementById("screen-login-container");
+    const appContainer = document.getElementById("app-original-container");
+    const topBar = document.getElementById("top-bar-auth");
 
-    loginForm.addEventListener("submit", async (e) => {
+    document.getElementById("login-form-system").addEventListener("submit", async (e) => {
       e.preventDefault();
-      loginError.innerText = "";
-      const email = document.getElementById("login-email").value;
-      const pass = document.getElementById("login-password").value;
+      const email = document.getElementById("login-email-input").value;
+      const pass = document.getElementById("login-password-input").value;
+      document.getElementById("login-error-msg").innerText = "";
 
       try {
         await signInWithEmailAndPassword(auth, email, pass);
       } catch (err) {
-        loginError.innerText = "Erro ao entrar: E-mail ou senha incorretos.";
+        document.getElementById("login-error-msg").innerText = "E-mail ou palavra-passe incorretos.";
       }
     });
 
-    btnLogout.addEventListener("click", () => signOut(auth));
+    document.getElementById("btn-logout").addEventListener("click", () => signOut(auth));
 
     onAuthStateChanged(auth, (user) => {
       if (user) {
-        const userEmail = user.email.toLowerCase();
-        const isCoord = EMAILS_COORDENACAO.includes(userEmail);
+        const email = user.email.toLowerCase();
+        const isCoord = EMAILS_COORDENACAO.includes(email);
 
         screenLogin.classList.add("hidden");
-        screenApp.classList.remove("hidden");
+        appContainer.classList.remove("hidden");
+        topBar.classList.remove("hidden");
 
-        document.getElementById("user-display-email").innerText = userEmail;
-        const roleBadge = document.getElementById("user-role-badge");
-        
-        if (isCoord) {
-          roleBadge.innerText = "Perfil: Coordenação (Acesso Total)";
-          roleBadge.className = "badge badge-admin";
-        } else {
-          roleBadge.innerText = "Perfil: Leitor (Apenas Visualização)";
-          roleBadge.className = "badge badge-user";
-        }
+        document.getElementById("user-display-email").innerText = email;
+        const badge = document.getElementById("user-role-badge");
+        badge.innerText = isCoord ? "Coordenação (Acesso Total)" : "Leitor (Apenas Visualização)";
+        badge.style.background = isCoord ? "#22c55e" : "#3b82f6";
+        badge.style.color = "#fff";
 
-        aplicarPermissoesBlindadas(isCoord);
+        aplicarProtecaoAutomatica(isCoord);
       } else {
         screenLogin.classList.remove("hidden");
-        screenApp.classList.add("hidden");
+        appContainer.classList.add("hidden");
+        topBar.classList.add("hidden");
       }
     });
 
-    // Proteção blindada que remove os elementos da página para impedir edições por leitores
-    function aplicarPermissoesBlindadas(isCoord) {
-      const menuCertificado = document.getElementById("menu-certificado");
-      
+    function aplicarProtecaoAutomatica(isCoord) {
       if (!isCoord) {
-        if (menuCertificado) {
-          menuCertificado.remove();
-        }
+        // 1. Procura e remove automaticamente qualquer aba, botão ou texto que diga "Certificado"
+        document.querySelectorAll("*").forEach(el => {
+          if (el.children.length === 0 && el.textContent.toLowerCase().includes("certificado")) {
+            let parent = el.closest("button, a, li, .tab, .tab-btn, .menu-item") || el;
+            parent.remove();
+          }
+        });
 
-        document.querySelectorAll(".btn-editar").forEach(btn => btn.remove());
-        document.querySelectorAll(".campo-editavel").forEach(input => {
+        // 2. Bloqueia todos os campos de formulário e inputs do seu app
+        appContainer.querySelectorAll("input, textarea, select").forEach(input => {
           input.readOnly = true;
-          input.setAttribute("tabindex", "-1");
+          input.disabled = true;
+        });
+
+        // 3. Esconde todos os botões de guardar, editar e submeter do seu app
+        appContainer.querySelectorAll("button, input[type='submit'], .btn, .btn-salvar, .btn-editar").forEach(btn => {
+          btn.style.display = "none";
         });
       }
     }
-
-    window.switchTab = function(tabId) {
-      document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
-      document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
-      
-      const tabTarget = document.getElementById(tabId);
-      if (tabTarget) {
-        tabTarget.classList.add("active");
-        event.currentTarget.classList.add("active");
-      }
-    };
   </script>
 </body>
 </html>
