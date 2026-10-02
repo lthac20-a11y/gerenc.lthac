@@ -11,6 +11,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { Member, WarningRecord } from '../types/league';
+import { useAuth } from '../context/AuthContext';
 
 interface DisciplinaryViewProps {
   members: Member[];
@@ -23,6 +24,7 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
   onUpdateMember,
   onSelectMember,
 }) => {
+  const { isCoordination } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -114,13 +116,15 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow transition-colors cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Lançar Advertência Formal
-          </button>
+          {isCoordination && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow transition-colors cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Lançar Advertência Formal
+            </button>
+          )}
         </div>
 
         {/* Severity Legend */}
@@ -233,28 +237,30 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-                <button
-                  type="button"
-                  onClick={() => handleToggleWarning(w.member.id, w.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
-                    w.active
-                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                      : 'bg-rose-900/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50'
-                  }`}
-                >
-                  {w.active ? 'Arquivar / Anular' : 'Reativar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteWarning(w.member.id, w.id)}
-                  className="px-2.5 py-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                  title="Remover advertência permanentemente"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Remover</span>
-                </button>
-              </div>
+              {isCoordination && (
+                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleWarning(w.member.id, w.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                      w.active
+                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                        : 'bg-rose-900/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50'
+                    }`}
+                  >
+                    {w.active ? 'Arquivar / Anular' : 'Reativar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteWarning(w.member.id, w.id)}
+                    className="px-2.5 py-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    title="Remover advertência permanentemente"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remover</span>
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}

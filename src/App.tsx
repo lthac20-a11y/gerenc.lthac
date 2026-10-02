@@ -12,6 +12,8 @@ import { AddMemberModal } from './components/AddMemberModal';
 import { AddShiftModal } from './components/AddShiftModal';
 import { LeagueSettingsModal } from './components/LeagueSettingsModal';
 import { SpreadsheetModal } from './components/SpreadsheetModal';
+import { LoginScreen } from './components/LoginScreen';
+import { useAuth } from './context/AuthContext';
 
 import { Member, LeagueConfig, ShiftRecord, RoleInLeague, ReplacementRecord, WarningRecord } from './types/league';
 import { INITIAL_MEMBERS, DEFAULT_LEAGUE_CONFIG } from './data/initialData';
@@ -61,6 +63,8 @@ function resolveCoordinationRole(name: string, currentRole: string): RoleInLeagu
 }
 
 export default function App() {
+  const { user, isAuthenticated, isCoordination, isReader, loading } = useAuth();
+
   // Members State
   const [members, setMembers] = useState<Member[]>(() => {
     try {
@@ -187,6 +191,20 @@ export default function App() {
       }
     }
   }, [members]);
+
+  // Enforce reader permissions
+  useEffect(() => {
+    if (isReader) {
+      if (currentTab === 'certificates') {
+        setCurrentTab('members');
+      }
+      setIsAddMemberOpen(false);
+      setIsAddShiftOpen(false);
+      setIsSettingsOpen(false);
+      setIsSpreadsheetOpen(false);
+      setCertificateMember(null);
+    }
+  }, [isReader, currentTab]);
 
   // Handlers
   const handleUpdateMember = (updated: Member) => {
@@ -460,6 +478,19 @@ export default function App() {
 
   const stats = calculateLeagueStats(members, config);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-4" />
+        <p className="text-slate-400 text-sm font-medium">Carregando autenticação...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
       {/* Header with Navigation & Quick Actions */}
@@ -526,7 +557,7 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'certificates' && (
+        {currentTab === 'certificates' && isCoordination && (
           <CertificatesView
             members={members}
             config={config}
@@ -555,7 +586,7 @@ export default function App() {
         />
       )}
 
-      {certificateMember && (
+      {certificateMember && isCoordination && (
         <CertificateModal
           member={certificateMember}
           config={config}
@@ -563,14 +594,14 @@ export default function App() {
         />
       )}
 
-      {isAddMemberOpen && (
+      {isAddMemberOpen && isCoordination && (
         <AddMemberModal
           onClose={() => setIsAddMemberOpen(false)}
           onAddMember={handleAddMember}
         />
       )}
 
-      {isAddShiftOpen && (
+      {isAddShiftOpen && isCoordination && (
         <AddShiftModal
           members={members}
           onClose={() => setIsAddShiftOpen(false)}
@@ -578,7 +609,7 @@ export default function App() {
         />
       )}
 
-      {isSettingsOpen && (
+      {isSettingsOpen && isCoordination && (
         <LeagueSettingsModal
           config={config}
           onClose={() => setIsSettingsOpen(false)}
@@ -589,7 +620,7 @@ export default function App() {
         />
       )}
 
-      {isSpreadsheetOpen && (
+      {isSpreadsheetOpen && isCoordination && (
         <SpreadsheetModal
           members={members}
           onClose={() => setIsSpreadsheetOpen(false)}

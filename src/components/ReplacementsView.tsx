@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Member, ReplacementRecord } from '../types/league';
 import { calculateReplacementDeadline, syncMemberReplacementsDeadlines } from '../utils/leagueCalculations';
+import { useAuth } from '../context/AuthContext';
 
 interface ReplacementsViewProps {
   members: Member[];
@@ -25,6 +26,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   onUpdateMember,
   onSelectMember,
 }) => {
+  const { isCoordination } = useAuth();
   const [filter, setFilter] = useState<'pendentes' | 'cumpridas' | 'todas'>('pendentes');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -218,13 +220,15 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Agendar Nova Reposição
-          </button>
+          {isCoordination && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Agendar Nova Reposição
+            </button>
+          )}
         </div>
 
         {/* Stats Row */}
@@ -417,40 +421,56 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
               </div>
 
               {/* Action Buttons & Date Input */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end md:self-center">
-                {!rep.completed ? (
-                  <>
-                    <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 rounded-lg px-2.5 py-1">
-                      <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span className="text-[11px] text-slate-300 whitespace-nowrap">Data feita:</span>
-                      <input
-                        type="text"
-                        placeholder="DD/MM/AAAA"
-                        value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
-                        onChange={e => setCompletionDates(prev => ({ ...prev, [rep.id]: e.target.value }))}
-                        className="px-1 py-0.5 bg-transparent text-white font-mono text-xs w-24 focus:outline-none"
-                      />
-                    </div>
+              {isCoordination ? (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end md:self-center">
+                  {!rep.completed ? (
+                    <>
+                      <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 rounded-lg px-2.5 py-1">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="text-[11px] text-slate-300 whitespace-nowrap">Data feita:</span>
+                        <input
+                          type="text"
+                          placeholder="DD/MM/AAAA"
+                          value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
+                          onChange={e => setCompletionDates(prev => ({ ...prev, [rep.id]: e.target.value }))}
+                          className="px-1 py-0.5 bg-transparent text-white font-mono text-xs w-24 focus:outline-none"
+                        />
+                      </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleComplete(rep.member.id, rep.id, completionDates[rep.id] || new Date().toLocaleDateString('pt-BR'))}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer whitespace-nowrap"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Concluir (+{rep.scheduledHours || 12}h)
-                      </button>
-
-                      {!rep.warningIssuedForDelay && (
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleLateWarning(rep.member.id, rep.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/70 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                          title="A não reposição acarreta em mais uma advertência"
+                          onClick={() => handleComplete(rep.member.id, rep.id, completionDates[rep.id] || new Date().toLocaleDateString('pt-BR'))}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer whitespace-nowrap"
                         >
-                          +1 ADV
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Concluir (+{rep.scheduledHours || 12}h)
                         </button>
-                      )}
 
+                        {!rep.warningIssuedForDelay && (
+                          <button
+                            onClick={() => handleLateWarning(rep.member.id, rep.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/70 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                            title="A não reposição acarreta em mais uma advertência"
+                          >
+                            +1 ADV
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => handleDeleteReplacement(rep.member.id, rep.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                          title="Remover reposição"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Horas Computadas
+                      </span>
                       <button
                         onClick={() => handleDeleteReplacement(rep.member.id, rep.id)}
                         className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
@@ -459,23 +479,22 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-2">
+                  )}
+                </div>
+              ) : (
+                <div className="shrink-0 self-end md:self-center">
+                  {rep.completed ? (
                     <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
                       <CheckCircle2 className="w-4 h-4" />
                       Horas Computadas
                     </span>
-                    <button
-                      onClick={() => handleDeleteReplacement(rep.member.id, rep.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                      title="Remover reposição"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <span className="text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-lg font-semibold">
+                      Reposição Pendente
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}

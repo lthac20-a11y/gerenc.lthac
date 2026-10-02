@@ -22,6 +22,7 @@ import {
   calculateReplacementDeadline,
   syncMemberReplacementsDeadlines 
 } from '../utils/leagueCalculations';
+import { useAuth } from '../context/AuthContext';
 
 interface MemberDetailModalProps {
   member: Member;
@@ -38,6 +39,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   onUpdateMember,
   onDeleteMember,
 }) => {
+  const { isCoordination } = useAuth();
   const [activeTab, setActiveTab] = useState<'shifts' | 'absences' | 'replacements' | 'warnings' | 'edit'>('shifts');
 
   // Form states for Shift
@@ -671,7 +673,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
             { id: 'absences', label: `Faltas (${member.justifiedAbsences.length + member.unjustifiedAbsences.length})` },
             { id: 'replacements', label: `Reposições (${member.replacements.length})` },
             { id: 'warnings', label: `Advertências (${member.warnings.length})` },
-            { id: 'edit', label: 'Editar Cadastro' },
+            ...(isCoordination ? [{ id: 'edit', label: 'Editar Cadastro' }] : []),
           ].map(tab => (
             <button
               key={tab.id}

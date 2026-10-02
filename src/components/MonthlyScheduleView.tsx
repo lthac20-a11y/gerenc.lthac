@@ -30,6 +30,7 @@ import {
   calculateActiveTime, 
   calculateReplacementDeadline 
 } from '../utils/leagueCalculations';
+import { useAuth } from '../context/AuthContext';
 
 interface MonthlyScheduleViewProps {
   members: Member[];
@@ -91,6 +92,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   onOpenAddShift,
   onOpenCertificateModal,
 }) => {
+  const { isCoordination } = useAuth();
   // Navigation & View Mode State
   const [currentMonthIndex, setCurrentMonthIndex] = useState<number>(9); // Default to out/26 (October)
   const [viewMode, setViewMode] = useState<ViewMode>('monthly');
@@ -488,15 +490,17 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
               </div>
             )}
 
-            {/* Primary Action Button: + Lançar Plantão */}
-            <button
-              type="button"
-              onClick={onOpenAddShift}
-              className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-900/30 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Lançar Plantão</span>
-            </button>
+            {/* Primary Action Button: + Lançar Plantão (Coordination Only) */}
+            {isCoordination && (
+              <button
+                type="button"
+                onClick={onOpenAddShift}
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-900/30 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Lançar Plantão</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -712,15 +716,17 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                             {shiftsInMonth.length === 0 ? (
                               /* Clean Empty Cell with Subtle Hover + Action */
                               <div className="h-8 flex items-center justify-center">
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleOpenDirectAdd(e, member, month)}
-                                  className="opacity-0 group-hover/cell:opacity-100 transition-opacity px-2 py-1 bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-700 hover:border-emerald-500 rounded-lg text-[10px] font-semibold flex items-center gap-1 shadow-sm cursor-pointer"
-                                  title={`Adicionar plantão para ${member.name} em ${SHORT_MONTH_NAMES[month] || month}`}
-                                >
-                                  <Plus className="w-3 h-3" />
-                                  <span>Lançar</span>
-                                </button>
+                                {isCoordination && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleOpenDirectAdd(e, member, month)}
+                                    className="opacity-0 group-hover/cell:opacity-100 transition-opacity px-2 py-1 bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-700 hover:border-emerald-500 rounded-lg text-[10px] font-semibold flex items-center gap-1 shadow-sm cursor-pointer"
+                                    title={`Adicionar plantão para ${member.name} em ${SHORT_MONTH_NAMES[month] || month}`}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    <span>Lançar</span>
+                                  </button>
+                                )}
                               </div>
                             ) : (
                               /* Render Shift Badges with Rich Interactive Tooltips */
@@ -778,14 +784,16 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                                 })}
 
                                 {/* Quick Add Extra Shift Button on hover */}
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleOpenDirectAdd(e, member, month)}
-                                  className="opacity-0 group-hover/cell:opacity-100 transition-opacity p-1 bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-md border border-slate-700 text-[10px] cursor-pointer"
-                                  title="Adicionar outro plantão"
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </button>
+                                {isCoordination && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleOpenDirectAdd(e, member, month)}
+                                    className="opacity-0 group-hover/cell:opacity-100 transition-opacity p-1 bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-md border border-slate-700 text-[10px] cursor-pointer"
+                                    title="Adicionar outro plantão"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </button>
+                                )}
                               </div>
                             )}
                           </td>
@@ -997,7 +1005,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                   <span>Abrir Ficha Completa</span>
                 </button>
 
-                {onOpenCertificateModal && (
+                {onOpenCertificateModal && isCoordination && (
                   <button
                     type="button"
                     onClick={() => {

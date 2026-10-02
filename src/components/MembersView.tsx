@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Member, LeagueConfig } from '../types/league';
 import { checkCertificateEligibility, calculateActiveTime } from '../utils/leagueCalculations';
+import { useAuth } from '../context/AuthContext';
 
 interface MembersViewProps {
   members: Member[];
@@ -34,6 +35,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
   onOpenAddMember,
   onOpenCertificateModal,
 }) => {
+  const { isCoordination, isReader } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<'name' | 'hours-desc' | 'hours-asc' | 'date-desc' | 'adv'>('hours-desc');
@@ -115,6 +117,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             {/* View Mode Toggle */}
             <div className="inline-flex bg-slate-800 border border-slate-700 p-1 rounded-xl">
               <button
+                type="button"
                 onClick={() => setViewMode('table')}
                 className={`p-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                   viewMode === 'table' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'
@@ -124,6 +127,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 <LayoutList className="w-4 h-4" />
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('cards')}
                 className={`p-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                   viewMode === 'cards' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'
@@ -134,14 +138,17 @@ export const MembersView: React.FC<MembersViewProps> = ({
               </button>
             </div>
 
-            {/* Add Member Button */}
-            <button
-              onClick={onOpenAddMember}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-sm transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Cadastrar Ligante
-            </button>
+            {/* Add Member Button (Coordination Only) */}
+            {isCoordination && (
+              <button
+                type="button"
+                onClick={onOpenAddMember}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-sm transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Cadastrar Ligante</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -167,15 +174,29 @@ export const MembersView: React.FC<MembersViewProps> = ({
             </div>
           </div>
 
-          <div className="bg-slate-800/40 border border-slate-800 p-2.5 rounded-xl flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
-              <Award className="w-4 h-4" />
+          {isCoordination ? (
+            <div className="bg-slate-800/40 border border-slate-800 p-2.5 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                <Award className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block leading-tight">Aptos ao Certificado</span>
+                <span className="text-base font-bold text-white font-mono">{eligibleCount} ({config.minHoursForCertificate}h)</span>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase font-semibold block leading-tight">Aptos ao Certificado</span>
-              <span className="text-base font-bold text-white font-mono">{eligibleCount} ({config.minHoursForCertificate}h)</span>
+          ) : (
+            <div className="bg-slate-800/40 border border-slate-800 p-2.5 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block leading-tight">Média por Membro</span>
+                <span className="text-base font-bold text-white font-mono">
+                  {members.length > 0 ? Math.round(totalHours / members.length) : 0}h / ligante
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-slate-800/40 border border-slate-800 p-2.5 rounded-xl flex items-center gap-3">
             <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
@@ -202,6 +223,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
           />
           {searchTerm && (
             <button
+              type="button"
               onClick={() => setSearchTerm('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
             >
@@ -214,7 +236,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
           {[
             { id: 'todos', label: 'Todos', count: members.length },
-            { id: 'aptos', label: `Aptos (≥${config.minHoursForCertificate}h)`, count: eligibleCount, badgeClass: 'bg-emerald-500/20 text-emerald-300' },
+            ...(isCoordination ? [{ id: 'aptos', label: `Aptos (≥${config.minHoursForCertificate}h)`, count: eligibleCount, badgeClass: 'bg-emerald-500/20 text-emerald-300' }] : []),
             { id: 'ligantes', label: 'Ligantes', count: members.filter(m => m.role === 'Ligante').length },
             { id: 'coordenacao', label: 'Coordenação', count: members.filter(m => m.role === 'Coordenação').length, badgeClass: 'bg-purple-500/20 text-purple-300' },
             { id: 'reposicoes', label: 'Reposições', count: pendingReplacementsCount, badgeClass: 'bg-amber-500/20 text-amber-300' },
@@ -222,6 +244,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
           ].map((tab) => (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setFilterType(tab.id)}
               className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                 filterType === tab.id
@@ -243,12 +266,12 @@ export const MembersView: React.FC<MembersViewProps> = ({
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-transparent text-white focus:outline-none cursor-pointer"
+            className="bg-transparent text-white focus:outline-none cursor-pointer text-xs"
           >
             <option value="hours-desc" className="bg-slate-800">Mais horas</option>
             <option value="hours-asc" className="bg-slate-800">Menos horas</option>
             <option value="name" className="bg-slate-800">Nome (A-Z)</option>
-            <option value="adv" className="bg-slate-800">Mais Advertências</option>
+            <option value="adv" className="bg-slate-800">Mais advertências</option>
           </select>
         </div>
       </div>
