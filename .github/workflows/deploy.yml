@@ -1,0 +1,45 @@
+name: Compilar e Publicar App React
+on:
+  push:
+    branches: ["main"]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obter o código-fonte
+        uses: actions/checkout@v4
+      
+      - name: Configurar o ambiente Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          
+      - name: Instalar as dependências do projeto
+        run: npm install
+        
+      - name: Compilar o código para Produção
+        # O parâmetro --base corrige automaticamente o erro 404 dos caminhos
+        run: npx vite build --base=/gerenc.lthac/
+        
+      - name: Configurar o GitHub Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Carregar os ficheiros compilados
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+          
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
