@@ -22,14 +22,12 @@ jobs:
       - name: Configurar o ambiente Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 24
           
       - name: Instalar as dependências do projeto
         run: npm install
         
       - name: Compilar o código para Produção
-        # O parâmetro --base corrige automaticamente o erro 404 dos caminhos
         run: npx vite build --base=/gerenc.lthac/
         
       - name: Configurar o GitHub Pages
