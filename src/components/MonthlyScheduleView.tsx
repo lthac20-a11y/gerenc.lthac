@@ -24,11 +24,23 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Member, LeagueConfig, ShiftRecord, RoleInLeague } from '../types/league';
-import { MONTH_COLUMNS } from '../data/initialData';
+import { 
+  getCurrentYear, 
+  getCurrentMonthIndex, 
+  formatMonthKey, 
+  formatFullMonthYear, 
+  parseMonthKey, 
+  getDaysInMonth, 
+  getMonthColumnsForYear, 
+  getQuartersForYear,
+  SHORT_MONTH_NAMES,
+  FULL_MONTH_NAMES 
+} from '../utils/dateUtils';
 import { 
   checkCertificateEligibility, 
   calculateActiveTime, 
-  calculateReplacementDeadline 
+  calculateReplacementDeadline,
+  syncMemberReplacementsDeadlines
 } from '../utils/leagueCalculations';
 import { useAuth } from '../context/AuthContext';
 
@@ -43,43 +55,6 @@ interface MonthlyScheduleViewProps {
 
 type ViewMode = 'monthly' | 'quarterly' | 'annual';
 
-const MONTH_NAMES_MAP: Record<string, string> = {
-  'jan/26': 'Janeiro / 2026',
-  'fev/26': 'Fevereiro / 2026',
-  'mar/26': 'Março / 2026',
-  'abr/26': 'Abril / 2026',
-  'mai/26': 'Maio / 2026',
-  'jun/26': 'Junho / 2026',
-  'jul/26': 'Julho / 2026',
-  'ago/26': 'Agosto / 2026',
-  'set/26': 'Setembro / 2026',
-  'out/26': 'Outubro / 2026',
-  'nov/26': 'Novembro / 2026',
-  'dez/26': 'Dezembro / 2026',
-};
-
-const SHORT_MONTH_NAMES: Record<string, string> = {
-  'jan/26': 'Janeiro',
-  'fev/26': 'Fevereiro',
-  'mar/26': 'Março',
-  'abr/26': 'Abril',
-  'mai/26': 'Maio',
-  'jun/26': 'Junho',
-  'jul/26': 'Julho',
-  'ago/26': 'Agosto',
-  'set/26': 'Setembro',
-  'out/26': 'Outubro',
-  'nov/26': 'Novembro',
-  'dez/26': 'Dezembro',
-};
-
-const QUARTERS = [
-  { id: 'Q1', label: '1º Trimestre (Jan - Mar)', months: ['jan/26', 'fev/26', 'mar/26'] },
-  { id: 'Q2', label: '2º Trimestre (Abr - Jun)', months: ['abr/26', 'mai/26', 'jun/26'] },
-  { id: 'Q3', label: '3º Trimestre (Jul - Set)', months: ['jul/26', 'ago/26', 'set/26'] },
-  { id: 'Q4', label: '4º Trimestre (Out - Dez)', months: ['out/26', 'nov/26', 'dez/26'] },
-];
-
 export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   members,
   config = {
@@ -93,8 +68,10 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   onOpenCertificateModal,
 }) => {
   const { isCoordination } = useAuth();
+  
   // Navigation & View Mode State
-  const [currentMonthIndex, setCurrentMonthIndex] = useState<number>(9); // Default to out/26 (October)
+  const [selectedYear, setSelectedYear] = useState<number>(() => getCurrentYear());
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(() => getCurrentMonthIndex());
   const [viewMode, setViewMode] = useState<ViewMode>('monthly');
 
   // Filters State
@@ -105,6 +82,14 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   // Slide-over Drawer State
   const [drawerMember, setDrawerMember] = useState<Member | null>(null);
 
+  // Active Month calculation
+  const activeMonthKey = formatMonthKey(selectedMonthIndex, selectedYear);
+  const activeMonthFormatted = formatFullMonthYear(selectedMonthIndex, selectedYear);
+
+  // Active Quarter calculation
+  const currentQuarters = useMemo(() => getQuartersForYear(selectedYear), [selectedYear]);
+  const currentQuarter = currentQuarters[Math.floor(selectedMonthIndex / 3)];
+
   // Quick Direct Add Shift Modal State
   const [directAddModal, setDirectAddModal] = useState<{
     isOpen: boolean;
@@ -114,47 +99,50 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   }>({
     isOpen: false,
     member: null,
-    monthKey: 'out/26',
-    date: '02/10',
+    monthKey: activeMonthKey,
+    date: `${new Date().getDate().toString().padStart(2, '0')}/${(new Date().getMonth() + 1).toString().padStart(2, '0')}`,
   });
 
   const [directShiftHours, setDirectShiftHours] = useState<number>(12);
   const [directShiftStatus, setDirectShiftStatus] = useState<'concluido' | 'falta_justificada' | 'falta_injustificada'>('concluido');
   const [directShiftDescription, setDirectShiftDescription] = useState<string>('Plantão Pronto Socorro');
 
-  // Active Month calculation
-  const activeMonthKey = MONTH_COLUMNS[currentMonthIndex] || 'out/26';
-  const activeMonthFormatted = MONTH_NAMES_MAP[activeMonthKey] || activeMonthKey;
-
-  // Active Quarter calculation
-  const currentQuarter = useMemo(() => {
-    return QUARTERS.find(q => q.months.includes(activeMonthKey)) || QUARTERS[3];
-  }, [activeMonthKey]);
-
   // Handle Month Navigation
   const handlePrevMonth = () => {
     if (viewMode === 'quarterly') {
-      const qIndex = QUARTERS.findIndex(q => q.id === currentQuarter.id);
+      const qIndex = Math.floor(selectedMonthIndex / 3);
       if (qIndex > 0) {
-        const prevQuarter = QUARTERS[qIndex - 1];
-        const newMonthIdx = MONTH_COLUMNS.indexOf(prevQuarter.months[0]);
-        if (newMonthIdx !== -1) setCurrentMonthIndex(newMonthIdx);
+        setSelectedMonthIndex((qIndex - 1) * 3);
+      } else {
+        setSelectedYear(prev => prev - 1);
+        setSelectedMonthIndex(9); // Q4
       }
     } else {
-      setCurrentMonthIndex(prev => (prev > 0 ? prev - 1 : MONTH_COLUMNS.length - 1));
+      if (selectedMonthIndex > 0) {
+        setSelectedMonthIndex(prev => prev - 1);
+      } else {
+        setSelectedYear(prev => prev - 1);
+        setSelectedMonthIndex(11);
+      }
     }
   };
 
   const handleNextMonth = () => {
     if (viewMode === 'quarterly') {
-      const qIndex = QUARTERS.findIndex(q => q.id === currentQuarter.id);
-      if (qIndex < QUARTERS.length - 1) {
-        const nextQuarter = QUARTERS[qIndex + 1];
-        const newMonthIdx = MONTH_COLUMNS.indexOf(nextQuarter.months[0]);
-        if (newMonthIdx !== -1) setCurrentMonthIndex(newMonthIdx);
+      const qIndex = Math.floor(selectedMonthIndex / 3);
+      if (qIndex < 3) {
+        setSelectedMonthIndex((qIndex + 1) * 3);
+      } else {
+        setSelectedYear(prev => prev + 1);
+        setSelectedMonthIndex(0); // Q1
       }
     } else {
-      setCurrentMonthIndex(prev => (prev < MONTH_COLUMNS.length - 1 ? prev + 1 : 0));
+      if (selectedMonthIndex < 11) {
+        setSelectedMonthIndex(prev => prev + 1);
+      } else {
+        setSelectedYear(prev => prev + 1);
+        setSelectedMonthIndex(0);
+      }
     }
   };
 
@@ -192,8 +180,8 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
     if (viewMode === 'quarterly') {
       return currentQuarter.months;
     }
-    return MONTH_COLUMNS; // Annual
-  }, [viewMode, activeMonthKey, currentQuarter]);
+    return getMonthColumnsForYear(selectedYear); // Annual
+  }, [viewMode, activeMonthKey, currentQuarter, selectedYear]);
 
   // Quick statistics for current period
   const periodStats = useMemo(() => {
@@ -202,7 +190,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
     let membersWithShifts = 0;
 
     members.forEach(m => {
-      const shiftsInPeriod = m.shifts.filter(s => displayedMonths.includes(s.monthKey || 'out/26'));
+      const shiftsInPeriod = m.shifts.filter(s => displayedMonths.includes(s.monthKey || activeMonthKey));
       if (shiftsInPeriod.length > 0) {
         membersWithShifts++;
         totalShifts += shiftsInPeriod.length;
@@ -221,7 +209,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
       activeMembersCount: members.length,
       occupancyRate: members.length > 0 ? Math.round((membersWithShifts / members.length) * 100) : 0,
     };
-  }, [members, displayedMonths]);
+  }, [members, displayedMonths, activeMonthKey]);
 
   // Handler: Open Direct Add Shift
   const handleOpenDirectAdd = (e: React.MouseEvent, member: Member, monthKey: string) => {
@@ -295,7 +283,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         deadlineMonth: shiftMonth,
         deadlineDescription: deadlineText,
         missedShiftDate: `${shiftDate} (${shiftMonth})`,
-        notes: 'Referente à falta não justificada de 02/10/2026',
+        notes: `Falta Justificada em ${shiftDate} (${shiftMonth}) — sem advertência, requer reposição. Prazo: ${deadlineText}`,
       };
 
       const newShift: ShiftRecord = {
@@ -305,7 +293,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         hours: 0,
         type: 'plantao',
         shiftStatus: 'falta_justificada',
-        description: 'Falta Justificada (requer reposição)',
+        description: 'Falta Justificada (sem advertência, requer reposição)',
         absenceId,
         replacementId,
       };
@@ -314,7 +302,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         ...targetMember,
         shifts: [newShift, ...targetMember.shifts],
         justifiedAbsences: [newAbsence, ...targetMember.justifiedAbsences],
-        replacements: [newReplacement, ...targetMember.replacements],
+        replacements: syncMemberReplacementsDeadlines([newReplacement, ...targetMember.replacements]),
       });
 
     } else if (directShiftStatus === 'falta_injustificada') {
@@ -330,7 +318,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
       const newWarning = {
         id: warningId,
         date: shiftDate,
-        reason: `Advertência por falta não justificada no plantão de ${shiftDate} (${shiftMonth})`,
+        reason: `Advertência automática por falta não justificada no plantão de ${shiftDate} (${shiftMonth})`,
         severity: 'moderada' as const,
         active: true,
       };
@@ -358,7 +346,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         deadlineMonth: shiftMonth,
         deadlineDescription: deadlineText,
         missedShiftDate: `${shiftDate} (${shiftMonth})`,
-        notes: 'Referente à falta não justificada de 02/10/2026',
+        notes: `Falta Não Justificada em ${shiftDate} (${shiftMonth}) — gerou 1 ADV e requer reposição. Prazo: ${deadlineText}`,
       };
 
       const newShift: ShiftRecord = {
@@ -378,7 +366,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         shifts: [newShift, ...targetMember.shifts],
         warnings: [newWarning, ...targetMember.warnings],
         unjustifiedAbsences: [newAbsence, ...targetMember.unjustifiedAbsences],
-        replacements: [newReplacement, ...targetMember.replacements],
+        replacements: syncMemberReplacementsDeadlines([newReplacement, ...targetMember.replacements]),
       });
     }
 
@@ -393,10 +381,10 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         {/* Main Header & Period Navigator */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
           
-          {/* Title and View Mode Selector */}
+          {/* Lado Esquerdo: Título, Badge de Ligantes e Subtítulo */}
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl">
+              <div className="p-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl shrink-0">
                 <CalendarDays className="w-5 h-5" />
               </div>
               <div>
@@ -413,11 +401,11 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
             </div>
           </div>
 
-          {/* Period Navigator (< Month / Year >) and View Mode Tabs */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Lado Direito: Seleção de Visualização e Navegador de Período perfeitamente alinhados à direita */}
+          <div className="flex flex-wrap sm:flex-nowrap items-center justify-start lg:justify-end gap-2.5">
             
             {/* View Mode Toggle (Segmented Control) */}
-            <div className="flex items-center p-1 bg-slate-950 border border-slate-800 rounded-xl">
+            <div className="inline-flex items-center p-1 bg-slate-950 border border-slate-800 rounded-xl shrink-0">
               <button
                 type="button"
                 onClick={() => setViewMode('monthly')}
@@ -458,49 +446,74 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
               </button>
             </div>
 
-            {/* Month / Quarter Navigator */}
-            {viewMode !== 'annual' && (
-              <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 p-1 rounded-xl shadow-inner">
+            {/* Month / Quarter Navigator & Year Selector */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Selector e Navegador de Ano */}
+              <div className="inline-flex items-center gap-1 bg-slate-950 border border-slate-800 p-1 rounded-xl shadow-inner shrink-0">
                 <button
                   type="button"
-                  onClick={handlePrevMonth}
+                  onClick={() => setSelectedYear(prev => prev - 1)}
                   className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                  title="Período anterior"
+                  title="Ano anterior"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
 
-                <div className="px-3 py-1 text-center min-w-[130px]">
-                  <span className="text-xs font-bold text-white block tracking-wide">
-                    {viewMode === 'monthly' ? activeMonthFormatted : currentQuarter.label}
-                  </span>
-                  <span className="text-[10px] text-emerald-400 font-mono">
-                    {viewMode === 'monthly' ? `Mês ${currentMonthIndex + 1} de 12` : `${currentQuarter.months.join(' · ')}`}
-                  </span>
-                </div>
+                <select
+                  value={selectedYear}
+                  onChange={e => setSelectedYear(Number(e.target.value))}
+                  className="bg-transparent text-emerald-400 font-mono font-bold text-xs focus:outline-none cursor-pointer px-1 py-0.5 text-center"
+                >
+                  {[...Array(11)].map((_, i) => {
+                    const y = getCurrentYear() - 5 + i;
+                    return <option key={y} value={y} className="bg-slate-900 text-white">{y}</option>;
+                  })}
+                </select>
 
                 <button
                   type="button"
-                  onClick={handleNextMonth}
+                  onClick={() => setSelectedYear(prev => prev + 1)}
                   className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                  title="Próximo período"
+                  title="Próximo ano"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
-            )}
 
-            {/* Primary Action Button: + Lançar Plantão (Coordination Only) */}
-            {isCoordination && (
-              <button
-                type="button"
-                onClick={onOpenAddShift}
-                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-900/30 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Lançar Plantão</span>
-              </button>
-            )}
+              {/* Month Navigator */}
+              {viewMode !== 'annual' && (
+                <div className="inline-flex items-center gap-1.5 bg-slate-950 border border-slate-800 p-1 rounded-xl shadow-inner shrink-0">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                    title="Período anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="px-3 py-1 text-center min-w-[130px]">
+                    <span className="text-xs font-bold text-white block tracking-wide">
+                      {viewMode === 'monthly' ? activeMonthFormatted : currentQuarter.label}
+                    </span>
+                    <span className="text-[10px] text-emerald-400 font-mono">
+                      {viewMode === 'monthly' 
+                        ? `Mês ${selectedMonthIndex + 1} de 12 (${getDaysInMonth(selectedMonthIndex, selectedYear)} dias)` 
+                        : `${currentQuarter.months.join(' · ')}`}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                    title="Próximo período"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -574,19 +587,20 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
       </div>
 
       {/* 2. MAIN SPREADSHEET TABLE WITH STICKY COLUMNS & HEADERS */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden relative">
-        <div className="overflow-x-auto max-h-[75vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
-          <table className="w-full text-left border-collapse min-w-[900px]">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden relative mb-16">
+        <div className="overflow-x-auto max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 pb-16">
+          <table className="w-full text-left border-collapse min-w-[950px]">
             {/* Sticky Top Header */}
-            <thead className="sticky top-0 z-30 bg-slate-950 shadow-md">
+            <thead className="sticky top-0 z-20 bg-slate-950 shadow-md">
               <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 
                 {/* Fixed Left Columns (Header) */}
-                <th className="py-3 px-3.5 sticky left-0 bg-slate-950 z-40 min-w-[220px] max-w-[240px] border-r border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <span>Membro da Liga</span>
-                    <span className="text-[10px] text-slate-500 font-normal">Função</span>
-                  </div>
+                <th className="py-3 px-3.5 sticky left-0 bg-slate-950 z-25 min-w-[200px] border-r border-slate-800">
+                  <span>Membro da Liga</span>
+                </th>
+
+                <th className="py-3 px-3 text-center min-w-[110px] bg-slate-950/95 border-r border-slate-800/80">
+                  Função
                 </th>
 
                 <th className="py-3 px-3 text-center min-w-[85px] bg-slate-950/95 border-r border-slate-800/80">
@@ -606,24 +620,28 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                 </th>
 
                 {/* Dynamic Months / Days Columns */}
-                {displayedMonths.map(month => (
-                  <th 
-                    key={month} 
-                    className={`py-3 px-3 text-center border-l border-slate-800/80 ${
-                      month === activeMonthKey 
-                        ? 'bg-slate-900/90 text-emerald-400 font-bold' 
-                        : 'bg-slate-950/80 text-slate-300'
-                    }`}
-                    style={{ minWidth: viewMode === 'monthly' ? '320px' : '150px' }}
-                  >
-                    <div className="flex items-center justify-center gap-1.5">
-                      <span>{MONTH_NAMES_MAP[month] || month}</span>
-                      {month === activeMonthKey && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      )}
-                    </div>
-                  </th>
-                ))}
+                {displayedMonths.map(month => {
+                  const { monthIndex, year } = parseMonthKey(month);
+                  const label = formatFullMonthYear(monthIndex, year);
+                  return (
+                    <th 
+                      key={month} 
+                      className={`py-3 px-3 text-center border-l border-slate-800/80 ${
+                        month === activeMonthKey 
+                          ? 'bg-slate-900/90 text-emerald-400 font-bold' 
+                          : 'bg-slate-950/80 text-slate-300'
+                      }`}
+                      style={{ minWidth: viewMode === 'monthly' ? '320px' : '150px' }}
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span>{label}</span>
+                        {month === activeMonthKey && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
 
@@ -631,7 +649,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
             <tbody className="divide-y divide-slate-800/60 text-xs">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={5 + displayedMonths.length} className="py-12 text-center text-slate-400">
+                  <td colSpan={6 + displayedMonths.length} className="py-12 text-center text-slate-400">
                     <User className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                     <p className="font-semibold text-slate-300">Nenhum ligante encontrado com os filtros selecionados</p>
                     <p className="text-xs text-slate-500 mt-1">Tente ajustar a busca por nome ou redefinir os filtros superiores</p>
@@ -648,23 +666,27 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                       onClick={() => setDrawerMember(member)}
                       className="hover:bg-slate-800/40 transition-colors group cursor-pointer"
                     >
-                      {/* 1. FIXED LEFT COLUMN: Member Name & Role */}
-                      <td className="py-2.5 px-3.5 sticky left-0 bg-slate-900 group-hover:bg-slate-850 transition-colors z-20 border-r border-slate-800 min-w-[220px] max-w-[240px]">
+                      {/* 1. FIXED LEFT COLUMN: Member Name */}
+                      <td className="py-3 px-3.5 sticky left-0 bg-slate-900 group-hover:bg-slate-850 transition-colors z-10 border-r border-slate-800 min-w-[200px]">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-xs">
                             {member.name.charAt(0)}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <span className="font-semibold text-white group-hover:text-emerald-400 transition-colors block truncate">
-                              {member.name}
-                            </span>
-                            <span className={`text-[10px] font-medium block truncate ${
-                              member.role === 'Coordenação' ? 'text-purple-400' : 'text-slate-400'
-                            }`}>
-                              {member.role}
-                            </span>
-                          </div>
+                          <span className="font-semibold text-white group-hover:text-emerald-400 transition-colors block truncate">
+                            {member.name}
+                          </span>
                         </div>
+                      </td>
+
+                      {/* 2. FUNÇÃO Column (Dedicated Badge) */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap border-r border-slate-800/60">
+                        <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                          member.role === 'Coordenação'
+                            ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                            : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                        }`}>
+                          {member.role}
+                        </span>
                       </td>
 
                       {/* 2. Entry Date */}
@@ -721,7 +743,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                                     type="button"
                                     onClick={(e) => handleOpenDirectAdd(e, member, month)}
                                     className="opacity-0 group-hover/cell:opacity-100 transition-opacity px-2 py-1 bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-700 hover:border-emerald-500 rounded-lg text-[10px] font-semibold flex items-center gap-1 shadow-sm cursor-pointer"
-                                    title={`Adicionar plantão para ${member.name} em ${SHORT_MONTH_NAMES[month] || month}`}
+                                    title={`Adicionar plantão para ${member.name} em ${formatFullMonthYear(parseMonthKey(month).monthIndex, parseMonthKey(month).year)}`}
                                   >
                                     <Plus className="w-3 h-3" />
                                     <span>Lançar</span>
@@ -734,8 +756,6 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                                 {shiftsInMonth.map(shift => {
                                   const isUnjustified = shift.shiftStatus === 'falta_injustificada';
                                   const isJustified = shift.shiftStatus === 'falta_justificada';
-                                  const isExcused = shift.isExcused;
-                                  const isCompleted = !isUnjustified && !isJustified && !isExcused;
 
                                   let badgeClasses = 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60 hover:border-emerald-500';
                                   let labelText = `${shift.date} • ${shift.hours || 12}h`;
@@ -746,9 +766,6 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                                   } else if (isJustified) {
                                     badgeClasses = 'bg-blue-950/80 text-blue-300 border-blue-700/70 hover:border-blue-500';
                                     labelText = `${shift.date} • F.J`;
-                                  } else if (isExcused) {
-                                    badgeClasses = 'bg-purple-950/80 text-purple-300 border-purple-700/70 hover:border-purple-500';
-                                    labelText = `${shift.date} • Abonado`;
                                   }
 
                                   return (
@@ -775,7 +792,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                                           {shift.description || 'Plantão de escala hospitalar'}
                                         </p>
                                         <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/80 text-[10px] text-slate-400">
-                                          <span>Carga: <strong className="text-white font-mono">{shift.hours}h</strong></span>
+                                          <span>Carga: <strong className="text-white font-mono">{shift.hours || 12}h</strong></span>
                                           <span className="text-emerald-400">Clique p/ detalhes</span>
                                         </div>
                                       </div>
@@ -1069,9 +1086,12 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                     onChange={e => setDirectAddModal(prev => ({ ...prev, monthKey: e.target.value }))}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-mono"
                   >
-                    {MONTH_COLUMNS.map(m => (
-                      <option key={m} value={m}>{MONTH_NAMES_MAP[m] || m}</option>
-                    ))}
+                    {getMonthColumnsForYear(selectedYear).map((m: string) => {
+                      const { monthIndex, year } = parseMonthKey(m);
+                      return (
+                        <option key={m} value={m}>{formatFullMonthYear(monthIndex, year)}</option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>

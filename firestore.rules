@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Auth & Role Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCoordination() {
+      return isSignedIn() && request.auth.token.email == "lthac20@gmail.com";
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Rules for members collection
+    match /members/{memberId} {
+      allow read: if isSignedIn();
+      allow write: if isCoordination() && isValidId(memberId);
+    }
+
+    // Rules for config collection and league document
+    match /config/league {
+      allow read: if isSignedIn();
+      allow write: if isCoordination();
+    }
+  }
+}

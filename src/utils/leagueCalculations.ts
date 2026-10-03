@@ -83,7 +83,6 @@ export function checkCertificateEligibility(
   const replacementsMet = config.requireAllReplacementsCompleted 
     ? pendingReplacementsCount === 0 
     : true;
-  const absencesMet = unjustifiedAbsencesCount <= config.maxUnjustifiedAbsencesAllowed;
 
   const reasonsPending: string[] = [];
 
@@ -105,11 +104,7 @@ export function checkCertificateEligibility(
     reasonsPending.push(`Possui ${pendingReplacementsCount} reposição(ões) de plantão pendente(s)`);
   }
 
-  if (!absencesMet) {
-    reasonsPending.push(`Possui ${unjustifiedAbsencesCount} falta(s) não justificada(s) registrada(s)`);
-  }
-
-  const isEligible = hoursMet && timeMet && warningsMet && replacementsMet && absencesMet && member.status === 'ativo';
+  const isEligible = hoursMet && timeMet && warningsMet && replacementsMet && member.status === 'ativo';
 
   return {
     isEligible,
@@ -126,9 +121,24 @@ export function checkCertificateEligibility(
     pendingReplacementsCount,
     replacementsMet,
     unjustifiedAbsencesCount,
-    absencesMet,
+    absencesMet: true,
     reasonsPending,
   };
+}
+
+/**
+ * Checks if a member is eligible (Apto) for certification based on either:
+ * 1) Accumulated hours >= 150h (or configured minimum); OR
+ * 2) Active time in league >= 1 year (>= 12 months or >= 365 days).
+ */
+export function isMemberEligibleForCertificate(
+  member: Member,
+  minHours: number = 150
+): boolean {
+  const activeTime = calculateActiveTime(member.entryDate);
+  const hoursMet = (member.accumulatedHours || 0) >= minHours;
+  const timeMet = activeTime.totalDays >= 365 || activeTime.totalMonths >= 12;
+  return hoursMet || timeMet;
 }
 
 /**
@@ -177,25 +187,15 @@ export function calculateLeagueStats(members: Member[], config: LeagueConfig) {
   };
 }
 
+import { calculateDynamicReplacementDeadline } from './dateUtils';
+
 /**
  * Calculates regimental replacement deadline:
  * - 1 falta de plantão no mês = repor no mês seguinte (M+1)
  * - 2 faltas de plantões no mesmo mês = o acadêmico terá os próximos 2 meses (M+1 e M+2) para repor esses 2 plantões
  */
 export function calculateReplacementDeadline(currentMonthKey: string, absencesInSameMonth: number): string {
-  const months = ['jan/26', 'fev/26', 'mar/26', 'abr/26', 'mai/26', 'jun/26', 'jul/26', 'ago/26', 'set/26', 'out/26', 'nov/26', 'dez/26'];
-  const idx = months.indexOf(currentMonthKey);
-  
-  if (absencesInSameMonth >= 2) {
-    if (idx === -1) return 'Nos próximos 2 meses seguintes';
-    const m1 = months[(idx + 1) % months.length];
-    const m2 = months[(idx + 2) % months.length];
-    return `Próximos 2 meses seguintes (${m1} e ${m2})`;
-  } else {
-    if (idx === -1) return 'No mês seguinte';
-    const nextM = months[(idx + 1) % months.length];
-    return `No mês seguinte (${nextM})`;
-  }
+  return calculateDynamicReplacementDeadline(currentMonthKey, absencesInSameMonth);
 }
 
 /**
@@ -220,5 +220,176 @@ export function syncMemberReplacementsDeadlines(replacements: import('../types/l
       deadlineDescription,
     };
   });
+}
+
+/**
+ * Automatically completes a replacement and dismisses (removes) the linked absence
+ * from the member's record, recalculating hours and syncing deadlines in real-time.
+ */
+export function completeReplacementAndDismissAbsence(
+  member: Member,
+  replacementId: string,
+  completionDate?: string,
+  customHours?: number
+): { updatedMember: Member; dismissedAbsence: import('../types/league').AbsenceRecord | null; hoursAdded: number } {
+  const rep = member.replacements.find(r => r.id === replacementId);
+  if (!rep) {
+    return { updatedMember: member, dismissedAbsence: null, hoursAdded: 0 };
+  }
+
+  const hoursToAdd = customHours ?? rep.scheduledHours ?? 12;
+  const finalDate = completionDate && completionDate.trim() ? completionDate.trim() : new Date().toLocaleDateString('pt-BR');
+
+  // 1. Locate the linked absence to dismiss
+  let dismissedAbsence: import('../types/league').AbsenceRecord | null = null;
+  let targetType: 'justificada' | 'injustificada' | null = null;
+
+  // Check direct ID match
+  if (rep.absenceId) {
+    const fj = member.justifiedAbsences.find(a => a.id === rep.absenceId);
+    if (fj) {
+      dismissedAbsence = fj;
+      targetType = 'justificada';
+    } else {
+      const fnj = member.unjustifiedAbsences.find(a => a.id === rep.absenceId);
+      if (fnj) {
+        dismissedAbsence = fnj;
+        targetType = 'injustificada';
+      }
+    }
+  }
+
+  // Check matching by replacementId
+  if (!dismissedAbsence) {
+    const fj = member.justifiedAbsences.find(a => a.replacementId === replacementId);
+    if (fj) {
+      dismissedAbsence = fj;
+      targetType = 'justificada';
+    } else {
+      const fnj = member.unjustifiedAbsences.find(a => a.replacementId === replacementId);
+      if (fnj) {
+        dismissedAbsence = fnj;
+        targetType = 'injustificada';
+      }
+    }
+  }
+
+  // Check matching by shiftId
+  if (!dismissedAbsence && rep.shiftId) {
+    const fj = member.justifiedAbsences.find(a => a.shiftId === rep.shiftId);
+    if (fj) {
+      dismissedAbsence = fj;
+      targetType = 'justificada';
+    } else {
+      const fnj = member.unjustifiedAbsences.find(a => a.shiftId === rep.shiftId);
+      if (fnj) {
+        dismissedAbsence = fnj;
+        targetType = 'injustificada';
+      }
+    }
+  }
+
+  // Check matching by missedShiftDate or deadlineMonth reference
+  if (!dismissedAbsence) {
+    const refDate = rep.missedShiftDate || '';
+    const refMonth = rep.deadlineMonth || '';
+
+    // Try finding by exact date / month string
+    if (refDate) {
+      const fj = member.justifiedAbsences.find(a => refDate.includes(a.date) || a.date.includes(refDate));
+      if (fj) {
+        dismissedAbsence = fj;
+        targetType = 'justificada';
+      } else {
+        const fnj = member.unjustifiedAbsences.find(a => refDate.includes(a.date) || a.date.includes(refDate));
+        if (fnj) {
+          dismissedAbsence = fnj;
+          targetType = 'injustificada';
+        }
+      }
+    }
+
+    // Try finding by monthKey
+    if (!dismissedAbsence && refMonth) {
+      const fj = member.justifiedAbsences.find(a => (a.monthKey || 'out/26') === refMonth);
+      if (fj) {
+        dismissedAbsence = fj;
+        targetType = 'justificada';
+      } else {
+        const fnj = member.unjustifiedAbsences.find(a => (a.monthKey || 'out/26') === refMonth);
+        if (fnj) {
+          dismissedAbsence = fnj;
+          targetType = 'injustificada';
+        }
+      }
+    }
+
+    // Fallback: pick the first pending absence from the member
+    if (!dismissedAbsence) {
+      if (member.justifiedAbsences.length > 0) {
+        dismissedAbsence = member.justifiedAbsences[0];
+        targetType = 'justificada';
+      } else if (member.unjustifiedAbsences.length > 0) {
+        dismissedAbsence = member.unjustifiedAbsences[0];
+        targetType = 'injustificada';
+      }
+    }
+  }
+
+  // 2. Remove the dismissed absence from the arrays
+  const updatedJustified = dismissedAbsence && targetType === 'justificada'
+    ? member.justifiedAbsences.filter(a => a.id !== dismissedAbsence!.id)
+    : member.justifiedAbsences;
+
+  const updatedUnjustified = dismissedAbsence && targetType === 'injustificada'
+    ? member.unjustifiedAbsences.filter(a => a.id !== dismissedAbsence!.id)
+    : member.unjustifiedAbsences;
+
+  // 3. Mark replacement as completed
+  const updatedReplacements = syncMemberReplacementsDeadlines(
+    member.replacements.map(r => {
+      if (r.id === replacementId) {
+        return {
+          ...r,
+          completed: true,
+          completedDate: finalDate,
+        };
+      }
+      return r;
+    })
+  );
+
+  // 4. Update shift record if it was an unexcused absence shift
+  const updatedShifts = member.shifts.map(s => {
+    if (
+      (dismissedAbsence && (s.absenceId === dismissedAbsence.id || s.id === dismissedAbsence.shiftId)) ||
+      (rep.shiftId && s.id === rep.shiftId) ||
+      s.replacementId === replacementId
+    ) {
+      return {
+        ...s,
+        shiftStatus: 'concluido' as const,
+        description: `Plantão Reposto em ${finalDate} (+${hoursToAdd}h)`,
+        hours: hoursToAdd,
+      };
+    }
+    return s;
+  });
+
+  const updatedMember: Member = {
+    ...member,
+    replacements: updatedReplacements,
+    justifiedAbsences: updatedJustified,
+    unjustifiedAbsences: updatedUnjustified,
+    shifts: updatedShifts,
+    accumulatedHours: member.accumulatedHours + hoursToAdd,
+    hoursUpdated: true,
+  };
+
+  return {
+    updatedMember,
+    dismissedAbsence,
+    hoursAdded: hoursToAdd,
+  };
 }
 

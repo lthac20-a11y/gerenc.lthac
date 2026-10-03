@@ -1,18 +1,73 @@
-import { Member, LeagueConfig } from '../types/league';
+import { Member, LeagueConfig, LeadershipMemberConfig } from '../types/league';
+
+export const DEFAULT_LEADERSHIP_BOARD: LeadershipMemberConfig[] = [
+  {
+    id: 'lead-preceptor',
+    role: 'Preceptor & Orientador',
+    name: 'Dr. João Carlos Domingues Repka',
+    description: 'Coordenador de Ensino e Pesquisa do Hospital Angelina Caron. Responsável pela supervisão académica e interlocução institucional.',
+    badge: 'Supervisão Hospitalar',
+    badgeColor: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    institution: 'Hospital Angelina Caron',
+    isPreceptor: true,
+  },
+  {
+    id: 'lead-president',
+    role: 'Presidente',
+    name: 'Nathan Enzo Bereza Canto Cray da Costa',
+    description: 'Representante oficial da LTHAC, coordenador geral da diretoria, responsável por presidir reuniões, propor diretrizes e zelar pelo estatuto.',
+    badge: 'Presidência Executiva',
+    badgeColor: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  },
+  {
+    id: 'lead-vice-president',
+    role: 'Vice-Presidente',
+    name: 'Pedro Ortolan Maziero',
+    description: 'Auxiliar direto da presidência, substituto de cargos em faltas, responsável pelo acompanhamento das obrigações e apoio disciplinar dos ligantes.',
+    badge: 'Vice-Presidência & Disciplina',
+    badgeColor: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+  },
+  {
+    id: 'lead-scientific',
+    role: 'Diretora Científica',
+    name: 'Jaciele Defaveri',
+    description: 'Planeador e organizador das atividades académicas, aulas, simpósios, casos clínicos e coordenação dos trabalhos/projetos de investigação científica.',
+    badge: 'Comitê Científico & Aulas',
+    badgeColor: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+  },
+  {
+    id: 'lead-marketing',
+    role: 'Diretora de Marketing',
+    name: 'Lorrana Conceição de Moraes',
+    description: 'Responsável pela comunicação institucional, gestão das redes sociais, identidade visual e divulgação de cursos e eventos.',
+    badge: 'Comunicação & Mídia',
+    badgeColor: 'bg-pink-500/15 text-pink-300 border-pink-500/30',
+  },
+  {
+    id: 'lead-secretary',
+    role: 'Secretária Geral',
+    name: 'Isabela Luisa Moreira',
+    description: 'Responsável pelo controlo de frequência e formulários de plantão, atas das reuniões, registo de advertências/reposições e gestão do cadastro dos membros.',
+    badge: 'Secretaria & Cadastro',
+    badgeColor: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+  },
+];
 
 export const DEFAULT_LEAGUE_CONFIG: LeagueConfig = {
   leagueName: 'Liga do Trauma Hospital Angelina Caron',
   leagueAcronym: 'LTHAC',
   institution: 'Hospital Angelina Caron',
-  coordinatorName: 'Prof. Dr. Roberto Mendes Silveira',
-  coordinatorTitle: 'Professor Orientador & Coordenador Geral',
-  presidentName: 'Paulo Vinicius Ramos',
-  minHoursForCertificate: 150, // Meta de horas: 150 horas mínimas
+  coordinatorName: 'Dr. João Carlos Domingues Repka',
+  coordinatorTitle: 'Coordenador de Ensino e Pesquisa do Hospital Angelina Caron',
+  presidentName: 'Nathan Enzo Bereza Canto Cray da Costa',
+  minHoursForCertificate: 192, // Meta estatutária de 192 horas
   minActiveMonthsForCertificate: 12, // tempo mínimo ativo na liga (1 ano)
   maxUnjustifiedAbsencesAllowed: 0, // faltas não justificadas devem estar zeradas
   maxActiveWarningsAllowed: 0, // sem advertências ativas
+  defaultShiftHours: 12, // carga horária padrão por plantão
   requireAllReplacementsCompleted: true, // todas reposições cumpridas
   cityState: 'Campina Grande do Sul - PR',
+  leadershipBoard: DEFAULT_LEADERSHIP_BOARD,
 };
 
 export const INITIAL_MEMBERS: Member[] = [
@@ -44,7 +99,7 @@ export const INITIAL_MEMBERS: Member[] = [
       { id: 's-1-4', date: '08/05', monthKey: 'mai/26', hours: 12, type: 'plantao', description: 'Plantão Noturno Trauma' },
       { id: 's-1-5', date: '16/05', monthKey: 'mai/26', hours: 12, type: 'plantao', description: 'Plantão Diurno' },
       { id: 's-1-6', date: '05/06', monthKey: 'jun/26', hours: 12, type: 'plantao', description: 'Plantão Fim de Semana' },
-      { id: 's-1-7', date: '12/06', monthKey: 'jun/26', hours: 12, type: 'plantao', description: 'Abonado', isExcused: true },
+      { id: 's-1-7', date: '12/06', monthKey: 'jun/26', hours: 12, type: 'plantao', description: 'Plantão Pronto Socorro' },
       { id: 's-1-8', date: '17/07', monthKey: 'jul/26', hours: 12, type: 'plantao', description: 'Plantão Emergência' },
       { id: 's-1-9', date: '28/08', monthKey: 'ago/26', hours: 12, type: 'plantao', description: 'Plantão UTI/Trauma' },
       { id: 's-1-10', date: '29/08', monthKey: 'ago/26', hours: 12, type: 'plantao', description: 'Plantão Cirúrgico' },
@@ -60,7 +115,22 @@ export const INITIAL_MEMBERS: Member[] = [
     status: 'ativo',
     accumulatedHours: 240,
     hoursUpdated: true,
-    warnings: [],
+    warnings: [
+      {
+        id: 'w-ab-r1',
+        date: '15/09/2026',
+        reason: 'Advertência automática por falta não justificada em 15/09/2026 (Ausência sem aviso prévio no plantão noturno)',
+        severity: 'moderada',
+        active: true,
+      },
+      {
+        id: 'w-ab-r2',
+        date: '22/09/2026',
+        reason: 'Advertência automática por falta não justificada em 22/09/2026 (Falta na escala de fim de semana)',
+        severity: 'moderada',
+        active: true,
+      },
+    ],
     justifiedAbsences: [],
     unjustifiedAbsences: [
       {
@@ -70,6 +140,7 @@ export const INITIAL_MEMBERS: Member[] = [
         type: 'injustificada',
         reason: 'Ausência sem aviso prévio no plantão noturno',
         requiresReplacement: true,
+        warningId: 'w-ab-r1',
       },
       {
         id: 'ab-r2',
@@ -78,6 +149,7 @@ export const INITIAL_MEMBERS: Member[] = [
         type: 'injustificada',
         reason: 'Falta na escala de fim de semana',
         requiresReplacement: true,
+        warningId: 'w-ab-r2',
       }
     ],
     replacements: [
@@ -150,11 +222,26 @@ export const INITIAL_MEMBERS: Member[] = [
     status: 'ativo',
     accumulatedHours: 96,
     hoursUpdated: true,
-    warnings: [],
+    warnings: [
+      {
+        id: 'w-ab-t1',
+        date: '05/09/2026',
+        reason: 'Advertência automática por falta não justificada em 05/09/2026 (Falta no plantão)',
+        severity: 'moderada',
+        active: true,
+      },
+      {
+        id: 'w-ab-t2',
+        date: '19/09/2026',
+        reason: 'Advertência automática por falta não justificada em 19/09/2026 (Falta sem justificativa)',
+        severity: 'moderada',
+        active: true,
+      },
+    ],
     justifiedAbsences: [],
     unjustifiedAbsences: [
-      { id: 'ab-t1', date: '05/09/2026', type: 'injustificada', reason: 'Falta no plantão', requiresReplacement: true },
-      { id: 'ab-t2', date: '19/09/2026', type: 'injustificada', reason: 'Falta sem justificativa', requiresReplacement: true },
+      { id: 'ab-t1', date: '05/09/2026', type: 'injustificada', reason: 'Falta no plantão', requiresReplacement: true, warningId: 'w-ab-t1' },
+      { id: 'ab-t2', date: '19/09/2026', type: 'injustificada', reason: 'Falta sem justificativa', requiresReplacement: true, warningId: 'w-ab-t2' },
     ],
     replacements: [
       { id: 'rep-t1', memberId: 'm-4', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
@@ -200,12 +287,13 @@ export const INITIAL_MEMBERS: Member[] = [
     accumulatedHours: 0,
     hoursUpdated: true,
     warnings: [
-      { id: 'w-6-1', date: '04/10/2026', reason: 'Advertência por falta não justificada no plantão de 04/10 (out/26)', severity: 'moderada', active: true },
+      { id: 'w-ab-a1', date: '15/08/2026', reason: 'Advertência automática por falta não justificada em 15/08/2026 (Falta não justificada)', severity: 'moderada', active: true },
+      { id: 'w-ab-a2', date: '28/08/2026', reason: 'Advertência automática por falta não justificada em 28/08/2026 (Falta não justificada)', severity: 'moderada', active: true },
     ],
     justifiedAbsences: [],
     unjustifiedAbsences: [
-      { id: 'ab-a1', date: '15/08/2026', type: 'injustificada', reason: 'Falta não justificada', requiresReplacement: true },
-      { id: 'ab-a2', date: '28/08/2026', type: 'injustificada', reason: 'Falta não justificada', requiresReplacement: true },
+      { id: 'ab-a1', date: '15/08/2026', type: 'injustificada', reason: 'Falta não justificada', requiresReplacement: true, warningId: 'w-ab-a1' },
+      { id: 'ab-a2', date: '28/08/2026', type: 'injustificada', reason: 'Falta não justificada', requiresReplacement: true, warningId: 'w-ab-a2' },
     ],
     replacements: [
       { id: 'rep-a1', memberId: 'm-6', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
@@ -224,11 +312,14 @@ export const INITIAL_MEMBERS: Member[] = [
     status: 'ativo',
     accumulatedHours: 24,
     hoursUpdated: true,
-    warnings: [],
+    warnings: [
+      { id: 'w-ab-i1', date: '01/08/2026', reason: 'Advertência automática por falta não justificada em 01/08/2026 (Falta em plantão)', severity: 'moderada', active: true },
+      { id: 'w-ab-i2', date: '15/08/2026', reason: 'Advertência automática por falta não justificada em 15/08/2026 (Falta sem justificativa prévia)', severity: 'moderada', active: true },
+    ],
     justifiedAbsences: [],
     unjustifiedAbsences: [
-      { id: 'ab-i1', date: '01/08/2026', type: 'injustificada', reason: 'Falta em plantão', requiresReplacement: true },
-      { id: 'ab-i2', date: '15/08/2026', type: 'injustificada', reason: 'Falta sem justificativa prévia', requiresReplacement: true },
+      { id: 'ab-i1', date: '01/08/2026', type: 'injustificada', reason: 'Falta em plantão', requiresReplacement: true, warningId: 'w-ab-i1' },
+      { id: 'ab-i2', date: '15/08/2026', type: 'injustificada', reason: 'Falta sem justificativa prévia', requiresReplacement: true, warningId: 'w-ab-i2' },
     ],
     replacements: [
       { id: 'rep-i1', memberId: 'm-7', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
@@ -247,11 +338,14 @@ export const INITIAL_MEMBERS: Member[] = [
     status: 'ativo',
     accumulatedHours: 24,
     hoursUpdated: true,
-    warnings: [],
+    warnings: [
+      { id: 'w-ab-ls1', date: '12/08/2026', reason: 'Advertência automática por falta não justificada em 12/08/2026 (Falta de plantão)', severity: 'moderada', active: true },
+      { id: 'w-ab-ls2', date: '24/08/2026', reason: 'Advertência automática por falta não justificada em 24/08/2026 (Falta de plantão)', severity: 'moderada', active: true },
+    ],
     justifiedAbsences: [],
     unjustifiedAbsences: [
-      { id: 'ab-ls1', date: '12/08/2026', type: 'injustificada', reason: 'Falta de plantão', requiresReplacement: true },
-      { id: 'ab-ls2', date: '24/08/2026', type: 'injustificada', reason: 'Falta de plantão', requiresReplacement: true },
+      { id: 'ab-ls1', date: '12/08/2026', type: 'injustificada', reason: 'Falta de plantão', requiresReplacement: true, warningId: 'w-ab-ls1' },
+      { id: 'ab-ls2', date: '24/08/2026', type: 'injustificada', reason: 'Falta de plantão', requiresReplacement: true, warningId: 'w-ab-ls2' },
     ],
     replacements: [
       { id: 'rep-ls1', memberId: 'm-8', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
@@ -329,11 +423,14 @@ export const INITIAL_MEMBERS: Member[] = [
     status: 'ativo',
     accumulatedHours: 24,
     hoursUpdated: true,
-    warnings: [],
+    warnings: [
+      { id: 'w-ab-ls-1', date: '15/08/2026', reason: 'Advertência automática por falta não justificada em 15/08/2026 (Falta em plantão agendado)', severity: 'moderada', active: true },
+      { id: 'w-ab-ls-2', date: '29/08/2026', reason: 'Advertência automática por falta não justificada em 29/08/2026 (Falta não justificada)', severity: 'moderada', active: true },
+    ],
     justifiedAbsences: [],
     unjustifiedAbsences: [
-      { id: 'ab-ls-1', date: '15/08/2026', type: 'injustificada', reason: 'Falta em plantão agendado', requiresReplacement: true },
-      { id: 'ab-ls-2', date: '29/08/2026', type: 'injustificada', reason: 'Falta não justificada', requiresReplacement: true },
+      { id: 'ab-ls-1', date: '15/08/2026', type: 'injustificada', reason: 'Falta em plantão agendado', requiresReplacement: true, warningId: 'w-ab-ls-1' },
+      { id: 'ab-ls-2', date: '29/08/2026', type: 'injustificada', reason: 'Falta não justificada', requiresReplacement: true, warningId: 'w-ab-ls-2' },
     ],
     replacements: [
       { id: 'rep-ls-1', memberId: 'm-12', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
@@ -612,7 +709,7 @@ export const INITIAL_MEMBERS: Member[] = [
       { id: 's-27-3', date: '06/05', monthKey: 'mai/26', hours: 12, type: 'plantao' },
       { id: 's-27-4', date: '23/05', monthKey: 'mai/26', hours: 12, type: 'plantao' },
       { id: 's-27-5', date: '04/06', monthKey: 'jun/26', hours: 12, type: 'plantao' },
-      { id: 's-27-6', date: '12/06', monthKey: 'jun/26', hours: 12, type: 'plantao', isExcused: true, description: 'Abonado' },
+      { id: 's-27-6', date: '12/06', monthKey: 'jun/26', hours: 12, type: 'plantao', description: 'Plantão Pronto Socorro' },
       { id: 's-27-7', date: '15/07', monthKey: 'jul/26', hours: 12, type: 'plantao' },
       { id: 's-27-8', date: '08/08', monthKey: 'ago/26', hours: 12, type: 'plantao' },
       { id: 's-27-9', date: '23/08', monthKey: 'ago/26', hours: 12, type: 'plantao' },
@@ -640,17 +737,19 @@ export const INITIAL_MEMBERS: Member[] = [
   },
 ];
 
+const currentYY = String(new Date().getFullYear()).slice(-2);
+
 export const MONTH_COLUMNS = [
-  'jan/26',
-  'fev/26',
-  'mar/26',
-  'abr/26',
-  'mai/26',
-  'jun/26',
-  'jul/26',
-  'ago/26',
-  'set/26',
-  'out/26',
-  'nov/26',
-  'dez/26',
+  `jan/${currentYY}`,
+  `fev/${currentYY}`,
+  `mar/${currentYY}`,
+  `abr/${currentYY}`,
+  `mai/${currentYY}`,
+  `jun/${currentYY}`,
+  `jul/${currentYY}`,
+  `ago/${currentYY}`,
+  `set/${currentYY}`,
+  `out/${currentYY}`,
+  `nov/${currentYY}`,
+  `dez/${currentYY}`,
 ];

@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  AlertTriangle, 
   ShieldAlert, 
-  Plus, 
-  CheckCircle2, 
   Search, 
-  Scale,
-  Calendar,
-  AlertCircle,
-  Trash2
+  Calendar, 
+  Trash2, 
+  Pencil, 
+  ChevronDown, 
+  ChevronUp, 
+  CheckCircle2, 
+  AlertTriangle,
+  User
 } from 'lucide-react';
 import { Member, WarningRecord } from '../types/league';
 import { useAuth } from '../context/AuthContext';
+import { QuickWarningModal } from './CoordinationModals';
 
 interface DisciplinaryViewProps {
   members: Member[];
@@ -26,31 +28,37 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
 }) => {
   const { isCoordination } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  // All accordion items closed by default on load
+  const [expandedMemberIds, setExpandedMemberIds] = useState<Set<string>>(() => new Set<string>());
 
-  // Form states
-  const [selectedMemberId, setSelectedMemberId] = useState(members[0]?.id || '');
-  const [date, setDate] = useState('02/10/2026');
-  const [severity, setSeverity] = useState<'leve' | 'moderada' | 'grave'>('moderada');
-  const [reason, setReason] = useState('');
+  const [editingWarning, setEditingWarning] = useState<{ memberId: string; warning: WarningRecord } | null>(null);
 
-  // Collect all warnings
-  const allWarnings = members.flatMap(member => 
-    member.warnings.map(w => ({
-      ...w,
-      member,
-    }))
-  );
+  // Toggle Accordion Expansion
+  const toggleMemberExpand = (memberId: string) => {
+    setExpandedMemberIds(prev => {
+      const next = new Set(prev);
+      if (next.has(memberId)) {
+        next.delete(memberId);
+      } else {
+        next.add(memberId);
+      }
+      return next;
+    });
+  };
 
-  const activeWarningsCount = allWarnings.filter(w => w.active).length;
+  // Expand all / Collapse all
+  const expandAll = () => {
+    const allIds = members.filter(m => m.warnings.length > 0).map(m => m.id);
+    setExpandedMemberIds(new Set(allIds));
+  };
 
-  const filteredWarnings = allWarnings.filter(w => 
-    w.member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    w.reason.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const collapseAll = () => {
+    setExpandedMemberIds(new Set());
+  };
 
-  // Toggle active/archived
-  const handleToggleWarning = (memberId: string, warningId: string) => {
+  // Toggle warning active status (Arquivar / Reativar)
+  const handleToggleWarning = (e: React.MouseEvent, memberId: string, warningId: string) => {
+    e.stopPropagation();
     const member = members.find(m => m.id === memberId);
     if (!member) return;
 
@@ -65,7 +73,8 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
   };
 
   // Delete warning permanently
-  const handleDeleteWarning = (memberId: string, warningId: string) => {
+  const handleDeleteWarning = (e: React.MouseEvent, memberId: string, warningId: string) => {
+    e.stopPropagation();
     const member = members.find(m => m.id === memberId);
     if (!member) return;
 
@@ -77,274 +86,336 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
     });
   };
 
-  // Add warning
-  const handleAddWarning = (e: React.FormEvent) => {
-    e.preventDefault();
-    const member = members.find(m => m.id === selectedMemberId);
-    if (!member || !reason.trim()) return;
+  // Members with warnings filtered by search
+  const membersWithWarnings = useMemo(() => {
+    return members
+      .filter(m => m.warnings && m.warnings.length > 0)
+      .filter(m => {
+        if (!searchTerm.trim()) return true;
+        const term = searchTerm.toLowerCase();
+        const matchesName = m.name.toLowerCase().includes(term);
+        const matchesRole = m.role.toLowerCase().includes(term);
+        const matchesReason = m.warnings.some(w => w.reason.toLowerCase().includes(term));
+        return matchesName || matchesRole || matchesReason;
+      })
+      .sort((a, b) => {
+        // Sort by active warnings desc, then total warnings desc, then name
+        const aActive = a.warnings.filter(w => w.active).length;
+        const bActive = b.warnings.filter(w => w.active).length;
+        if (bActive !== aActive) return bActive - aActive;
+        if (b.warnings.length !== a.warnings.length) return b.warnings.length - a.warnings.length;
+        return a.name.localeCompare(b.name);
+      });
+  }, [members, searchTerm]);
 
-    const newWarn: WarningRecord = {
-      id: `w-${Date.now()}`,
-      date,
-      reason,
-      severity,
-      active: true,
-    };
+  // Overall statistics
+  const totalActiveWarnings = useMemo(() => {
+    return members.reduce((acc, m) => acc + m.warnings.filter(w => w.active).length, 0);
+  }, [members]);
 
-    onUpdateMember({
-      ...member,
-      warnings: [...member.warnings, newWarn],
-    });
-
-    setIsAddModalOpen(false);
-    setReason('');
-  };
+  const membersAtLimitCount = useMemo(() => {
+    return members.filter(m => m.warnings.filter(w => w.active).length >= 3).length;
+  }, [members]);
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-5">
+      {/* 1. TOP HEADER & METRICS BANNER */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-md">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-rose-400" />
-              Conselho Disciplinar & Advertências (ADV)
-            </h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-xl">
-              Registro formal de advertências por descumprimento de escalas, atrasos ou faltas não justificadas.
-              Advertências ativas bloqueiam a emissão do certificado de conclusão.
-            </p>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-rose-500/15 text-rose-400 border border-rose-500/30 rounded-xl shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2 font-display">
+                  Conselho Disciplinar & Advertências (ADV)
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    {totalActiveWarnings} ativas
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Acompanhamento consolidado por integrante e controle regimental de advertências disciplinares
+                </p>
+              </div>
+            </div>
           </div>
 
-          {isCoordination && (
+          {/* Quick Metrics Tag */}
+          {membersAtLimitCount > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300 font-semibold self-start md:self-center">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{membersAtLimitCount} integrante(s) no limite de 3 ADVs</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 2. SEARCH BAR & ACCORDION CONTROLS */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Buscar por nome do ligante ou motivo da falta..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-8 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
+          />
+          {searchTerm && (
             <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow transition-colors cursor-pointer shrink-0"
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              Lançar Advertência Formal
+              ✕
             </button>
           )}
         </div>
 
-        {/* Severity Legend */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-800 text-xs">
-          <div className="p-2.5 bg-slate-800/40 rounded-lg border border-slate-800">
-            <span className="font-semibold text-white block">1. Advertência Leve</span>
-            <span className="text-slate-400 text-[11px]">Atrasos reiterados em reuniões ou plantões</span>
-          </div>
-
-          <div className="p-2.5 bg-amber-950/20 rounded-lg border border-amber-900/30">
-            <span className="font-semibold text-amber-300 block">2. Advertência Moderada</span>
-            <span className="text-slate-400 text-[11px]">Falta não comunicada em escala regular</span>
-          </div>
-
-          <div className="p-2.5 bg-rose-950/20 rounded-lg border border-rose-900/30">
-            <span className="font-semibold text-rose-300 block">3. Advertência Grave</span>
-            <span className="text-slate-400 text-[11px]">Abandono de plantão de emergência / Suspensão</span>
-          </div>
+        <div className="flex items-center gap-2 self-end sm:self-center">
+          <button
+            type="button"
+            onClick={expandAll}
+            className="px-3 py-1.5 text-xs text-slate-300 hover:text-white bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg transition-colors cursor-pointer"
+          >
+            Expandir todos
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            className="px-3 py-1.5 text-xs text-slate-300 hover:text-white bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg transition-colors cursor-pointer"
+          >
+            Recolher todos
+          </button>
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="flex items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-3 rounded-xl">
-        <div className="flex items-center gap-2 text-xs text-slate-300">
-          <span className="font-bold text-white">{activeWarningsCount}</span>
-          <span>advertência(s) ativa(s) na liga</span>
-        </div>
-
-        <div className="relative max-w-xs w-full">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Buscar por ligante ou motivo..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-400 focus:outline-none"
-          />
-        </div>
-      </div>
-
-      {/* Warnings List */}
-      <div className="space-y-3">
-        {filteredWarnings.length === 0 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center text-slate-400 text-xs">
-            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-            Nenhuma advertência encontrada.
+      {/* 3. GROUPED LIST BY MEMBER (ACCORDION) */}
+      <div className="space-y-3 pb-16">
+        {membersWithWarnings.length === 0 ? (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
+            <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-white mb-1">Nenhuma advertência encontrada</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              {searchTerm 
+                ? 'Nenhum integrante corresponde aos termos da busca digitada.'
+                : 'Todos os ligantes da LTHAC estão com a ficha disciplinar regularizada!'}
+            </p>
           </div>
         ) : (
-          filteredWarnings.map(w => (
-            <div
-              key={w.id}
-              className={`bg-slate-900 border rounded-xl p-4 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                w.active
-                  ? 'border-rose-800/40 bg-gradient-to-r from-slate-900 to-rose-950/10'
-                  : 'border-slate-800 opacity-60'
-              }`}
-            >
-              <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                <div 
-                  onClick={() => onSelectMember(w.member)}
-                  className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white text-sm cursor-pointer hover:border-emerald-500 transition-colors shrink-0"
-                >
-                  {w.member.name.charAt(0)}
-                </div>
+          membersWithWarnings.map(member => {
+            const isExpanded = expandedMemberIds.has(member.id);
+            const activeWarnings = member.warnings.filter(w => w.active);
+            const activeCount = activeWarnings.length;
+            const totalCount = member.warnings.length;
+            const isAtLimit = activeCount >= 3;
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 
-                      onClick={() => onSelectMember(w.member)}
-                      className="text-sm font-semibold text-white hover:text-emerald-400 transition-colors cursor-pointer truncate"
+            return (
+              <div
+                key={member.id}
+                className={`bg-slate-900 border rounded-2xl transition-all overflow-hidden ${
+                  isAtLimit
+                    ? 'border-rose-500/50 bg-gradient-to-r from-slate-900 via-slate-900 to-rose-950/20 shadow-md shadow-rose-950/20'
+                    : activeCount > 0
+                    ? 'border-slate-800 hover:border-slate-700/80'
+                    : 'border-slate-800/80 opacity-75'
+                }`}
+              >
+                {/* Accordion Header / Trigger */}
+                <div
+                  onClick={() => toggleMemberExpand(member.id)}
+                  className="p-4 sm:p-4.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-800/40 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    {/* Member Avatar */}
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectMember(member);
+                      }}
+                      title="Abrir prontuário completo"
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 border transition-all ${
+                        isAtLimit
+                          ? 'bg-rose-500/20 text-rose-200 border-rose-500/50'
+                          : member.role === 'Coordenação'
+                          ? 'bg-purple-500/15 border-purple-500/40 text-purple-200'
+                          : 'bg-slate-800 border-slate-700 text-white hover:border-emerald-500'
+                      }`}
                     >
-                      {w.member.name}
-                    </h3>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                      {w.member.role}
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                      w.severity === 'grave'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                        : w.severity === 'moderada'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                    }`}>
-                      {w.severity}
-                    </span>
-                    {w.active ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-semibold">
-                        Ativa
-                      </span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-400">
-                        Arquivada
+                      {member.name.charAt(0)}
+                    </div>
+
+                    {/* Member Name and Role */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectMember(member);
+                          }}
+                          className="font-bold text-white hover:text-emerald-400 transition-colors text-sm sm:text-base truncate cursor-pointer"
+                        >
+                          {member.name}
+                        </span>
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${
+                          member.role === 'Coordenação'
+                            ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}>
+                          {member.role}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Admissão: <span className="font-mono text-slate-300">{member.entryDate}</span> · <span className="font-mono">{member.accumulatedHours}h</span> acumuladas
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right: Counter Badges + Limit Alert + Chevron */}
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                    {/* Subtle Alert Badge for 3 Warnings */}
+                    {isAtLimit && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-sm animate-pulse">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span className="hidden sm:inline">⚠️ Limite Atingido (3 ADVs)</span>
+                        <span className="sm:hidden">⚠️ 3 ADVs</span>
                       </span>
                     )}
-                  </div>
 
-                  <p className="text-xs text-slate-300 mt-1">
-                    {w.reason}
-                  </p>
-
-                  <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1.5 font-mono">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3 text-slate-500" />
-                      Data: {w.date}
+                    {/* Total Active Warnings Count Badge */}
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold border font-mono tabular-nums ${
+                      activeCount > 0
+                        ? isAtLimit
+                          ? 'bg-rose-500/25 text-rose-200 border-rose-500/50'
+                          : 'bg-amber-500/20 text-amber-200 border-amber-500/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      {activeCount} {activeCount === 1 ? 'Advertência Ativa' : 'Advertências Ativas'}
+                      {totalCount > activeCount && (
+                        <span className="text-slate-400 font-normal ml-1">
+                          ({totalCount - activeCount} arquivada{totalCount - activeCount > 1 ? 's' : ''})
+                        </span>
+                      )}
                     </span>
-                    <span>•</span>
-                    <span>Total no histórico do ligante: {w.member.warnings.length}</span>
+
+                    {/* Chevron Expand Indicator */}
+                    <div className="p-1 text-slate-400 hover:text-white rounded-lg transition-transform">
+                      {isExpanded ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Action Buttons */}
-              {isCoordination && (
-                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleWarning(w.member.id, w.id)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
-                      w.active
-                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                        : 'bg-rose-900/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50'
-                    }`}
-                  >
-                    {w.active ? 'Arquivar / Anular' : 'Reativar'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteWarning(w.member.id, w.id)}
-                    className="px-2.5 py-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                    title="Remover advertência permanentemente"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Remover</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          ))
+                {/* Accordion Body: Compact Warning Records List */}
+                {isExpanded && (
+                  <div className="border-t border-slate-800/80 bg-slate-950/60 p-4 space-y-2.5 transition-all">
+                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                      <span>Histórico Detalhado ({totalCount} ocorrência{totalCount > 1 ? 's' : ''})</span>
+                      <button
+                        type="button"
+                        onClick={() => onSelectMember(member)}
+                        className="text-emerald-400 hover:text-emerald-300 hover:underline capitalize text-xs cursor-pointer font-medium"
+                      >
+                        Abrir prontuário completo →
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {member.warnings.map((w, idx) => (
+                        <div
+                          key={w.id}
+                          className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                            w.active
+                              ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+                              : 'bg-slate-900/40 border-slate-800/50 opacity-60'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-bold text-slate-300">
+                                #{idx + 1}
+                              </span>
+                              <span className="inline-flex items-center gap-1 font-mono text-xs text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
+                                <Calendar className="w-3 h-3 text-slate-500" />
+                                {w.date}
+                              </span>
+                              {w.active ? (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                  Ativa
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                                  Arquivada / Anulada
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-slate-200 leading-relaxed font-medium">
+                              {w.reason}
+                            </p>
+                          </div>
+
+                          {/* Quick Actions (Coordination Only) */}
+                          {isCoordination && (
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center pt-1 sm:pt-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingWarning({ memberId: member.id, warning: w });
+                                }}
+                                className="px-2.5 py-1 text-xs text-slate-300 hover:text-emerald-300 bg-slate-800 hover:bg-emerald-500/15 border border-slate-700 hover:border-emerald-500/30 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                title="Editar texto da advertência"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                <span>Editar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleWarning(e, member.id, w.id)}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                                  w.active
+                                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                                    : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50'
+                                }`}
+                              >
+                                {w.active ? 'Arquivar' : 'Reativar'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteWarning(e, member.id, w.id)}
+                                className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                                title="Excluir advertência"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* Add Warning Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-rose-400" />
-              Lançar Advertência Disciplinar
-            </h3>
-
-            <form onSubmit={handleAddWarning} className="space-y-3 text-xs">
-              <div>
-                <label className="text-slate-400 uppercase font-semibold">Selecione o Ligante</label>
-                <select
-                  value={selectedMemberId}
-                  onChange={e => setSelectedMemberId(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                >
-                  {members.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-slate-400 uppercase font-semibold">Data da Ocorrência</label>
-                <input
-                  type="text"
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                  required
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-400 uppercase font-semibold">Gravidade da Falta</label>
-                <select
-                  value={severity}
-                  onChange={e => setSeverity(e.target.value as any)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                >
-                  <option value="leve">Leve</option>
-                  <option value="moderada">Moderada</option>
-                  <option value="grave">Grave</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-slate-400 uppercase font-semibold">Motivo Formal / Ocorrência</label>
-                <textarea
-                  value={reason}
-                  onChange={e => setReason(e.target.value)}
-                  rows={3}
-                  required
-                  placeholder="Descreva a infração regimental e consequências..."
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-lg cursor-pointer"
-                >
-                  Registrar Advertência
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Edit Warning Modal */}
+      {editingWarning && (
+        <QuickWarningModal
+          members={members}
+          editingWarning={editingWarning}
+          onClose={() => setEditingWarning(null)}
+          onUpdateMember={onUpdateMember}
+        />
       )}
     </div>
   );

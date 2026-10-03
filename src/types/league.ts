@@ -72,6 +72,21 @@ export interface Member {
   phone?: string;
   studentId?: string; // Matrícula / RA
   notes?: string;
+  certificateEmitted?: boolean; // Controle de status do certificado (emitido ou pendente)
+  badgeCollected?: boolean; // Carteirinha / Crachá Recolhido (Sim / Não)
+  badgeCollectedDate?: string; // Data da devolução da carteirinha/crachá
+  badgeNotes?: string; // Observação de devolução do crachá
+}
+
+export interface LeadershipMemberConfig {
+  id: string;
+  role: string;
+  name: string;
+  description: string;
+  badge: string;
+  badgeColor?: string;
+  institution?: string;
+  isPreceptor?: boolean;
 }
 
 export interface LeagueConfig {
@@ -83,10 +98,12 @@ export interface LeagueConfig {
   presidentName: string;
   minHoursForCertificate: number; // e.g., 180
   minActiveMonthsForCertificate: number; // e.g., 6 or 12
-  maxUnjustifiedAbsencesAllowed: number; // e.g., 0
+  maxUnjustifiedAbsencesAllowed?: number; // e.g., 0
   maxActiveWarningsAllowed: number; // e.g., 0 or 1
+  defaultShiftHours?: number; // e.g., 12
   requireAllReplacementsCompleted: boolean; // true
   cityState: string;
+  leadershipBoard?: LeadershipMemberConfig[];
 }
 
 export interface CertificateEligibility {

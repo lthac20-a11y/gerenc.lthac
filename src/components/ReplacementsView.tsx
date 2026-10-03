@@ -7,13 +7,22 @@ import {
   Clock, 
   Search, 
   AlertCircle,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  UserCheck,
   User,
-  ArrowRight,
-  Trash2
+  ListFilter,
+  Pencil
 } from 'lucide-react';
 import { Member, ReplacementRecord } from '../types/league';
-import { calculateReplacementDeadline, syncMemberReplacementsDeadlines } from '../utils/leagueCalculations';
+import { 
+  calculateReplacementDeadline, 
+  syncMemberReplacementsDeadlines,
+  completeReplacementAndDismissAbsence
+} from '../utils/leagueCalculations';
 import { useAuth } from '../context/AuthContext';
+import { QuickReplacementModal } from './CoordinationModals';
 
 interface ReplacementsViewProps {
   members: Member[];
@@ -30,6 +39,27 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   const [filter, setFilter] = useState<'pendentes' | 'cumpridas' | 'todas'>('pendentes');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Expandable members state (map of memberId -> boolean)
+  // By default, members start collapsed (closed)
+  const [expandedMembers, setExpandedMembers] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = (memberId: string) => {
+    setExpandedMembers(prev => ({
+      ...prev,
+      [memberId]: !prev[memberId],
+    }));
+  };
+
+  const expandAll = () => {
+    const next: Record<string, boolean> = {};
+    members.forEach(m => { next[m.id] = true; });
+    setExpandedMembers(next);
+  };
+
+  const collapseAll = () => {
+    setExpandedMembers({});
+  };
+
   // New Replacement Form Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState(members[0]?.id || '');
@@ -43,56 +73,66 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   const [completionDates, setCompletionDates] = useState<Record<string, string>>({});
   const [editingDates, setEditingDates] = useState<Record<string, string>>({});
   const [isEditingDateId, setIsEditingDateId] = useState<string | null>(null);
+  const [editingReplacement, setEditingReplacement] = useState<{ memberId: string; replacement: ReplacementRecord } | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
-  // Collect all replacements with their member data
-  const allReplacements = members.flatMap(member => 
-    member.replacements.map(rep => ({
-      ...rep,
-      member,
-    }))
-  );
+  const showFeedback = (msg: string) => {
+    setFeedbackMsg(msg);
+    setTimeout(() => setFeedbackMsg(null), 4000);
+  };
 
-  const filteredReplacements = allReplacements.filter(item => {
-    const matchesSearch = item.member.name.toLowerCase().includes(searchTerm.toLowerCase());
-    if (!matchesSearch) return false;
-
-    if (filter === 'pendentes') return !item.completed;
-    if (filter === 'cumpridas') return item.completed;
-    return true;
-  });
-
+  // Collect overall counts
+  const allReplacements = members.flatMap(member => member.replacements);
   const pendingCount = allReplacements.filter(r => !r.completed).length;
   const completedCount = allReplacements.filter(r => r.completed).length;
+
+  // Group replacements by Member
+  const memberGroups = members
+    .map(member => {
+      const filteredReps = member.replacements.filter(item => {
+        if (filter === 'pendentes') return !item.completed;
+        if (filter === 'cumpridas') return item.completed;
+        return true;
+      });
+
+      const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const pendingRepsCount = member.replacements.filter(r => !r.completed).length;
+      const completedRepsCount = member.replacements.filter(r => r.completed).length;
+
+      return {
+        member,
+        replacements: filteredReps,
+        allMemberReplacements: member.replacements,
+        pendingRepsCount,
+        completedRepsCount,
+        matchesSearch,
+      };
+    })
+    .filter(group => {
+      if (searchTerm) {
+        return group.matchesSearch && group.allMemberReplacements.length > 0;
+      }
+      return group.replacements.length > 0;
+    });
 
   // Handler: Complete replacement with custom completion date
   const handleComplete = (memberId: string, repId: string, customDate?: string) => {
     const targetMember = members.find(m => m.id === memberId);
     if (!targetMember) return;
 
-    const rep = targetMember.replacements.find(r => r.id === repId);
-    const hoursToAdd = rep ? rep.scheduledHours || 12 : 12;
     const todayStr = new Date().toLocaleDateString('pt-BR');
     const finalDate = (customDate && customDate.trim()) || completionDates[repId] || todayStr;
 
-    const updatedReplacements = targetMember.replacements.map(r => {
-      if (r.id === repId) {
-        return {
-          ...r,
-          completed: true,
-          completedDate: finalDate,
-        };
-      }
-      return r;
-    });
+    const { updatedMember, dismissedAbsence, hoursAdded } = completeReplacementAndDismissAbsence(targetMember, repId, finalDate);
 
-    onUpdateMember({
-      ...targetMember,
-      replacements: updatedReplacements,
-      accumulatedHours: targetMember.accumulatedHours + hoursToAdd,
-      hoursUpdated: true,
-    });
+    onUpdateMember(updatedMember);
 
-    alert(`Reposição confirmada como realizada em ${finalDate}! (+${hoursToAdd}h computadas para ${targetMember.name}).`);
+    if (dismissedAbsence) {
+      showFeedback(`Reposição confirmada em ${finalDate}! Falta de ${dismissedAbsence.date} quitada e removida. (+${hoursAdded}h computadas para ${targetMember.name}).`);
+    } else {
+      showFeedback(`Reposição confirmada em ${finalDate}! (+${hoursAdded}h computadas para ${targetMember.name}).`);
+    }
   };
 
   // Handler: Edit / Update completion date for an already completed replacement
@@ -143,7 +183,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
       replacements: updatedReplacements,
     });
 
-    alert(`Advertência disciplinar aplicada a ${targetMember.name} por não reposição no prazo!`);
+    showFeedback(`Advertência disciplinar aplicada a ${targetMember.name} por não reposição no prazo!`);
   };
 
   // Handler: Delete replacement
@@ -185,7 +225,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
       deadlineDescription: deadlineText,
       scheduledHours: Number(scheduledHours),
       completed: isCompletedAlready,
-      completedDate: isCompletedAlready ? (completedDateInput || new Date().toLocaleDateString('pt-BR')) : undefined,
+      ...(isCompletedAlready ? { completedDate: completedDateInput || new Date().toLocaleDateString('pt-BR') } : {}),
       notes,
     };
 
@@ -199,6 +239,9 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
       hoursUpdated: isCompletedAlready ? true : targetMember.hoursUpdated,
     });
 
+    // Expand the target member automatically
+    setExpandedMembers(prev => ({ ...prev, [selectedMemberId]: true }));
+
     setIsAddModalOpen(false);
     setNotes('');
     setIsCompletedAlready(false);
@@ -206,29 +249,36 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {feedbackMsg && (
+        <div className="bg-emerald-950/80 border border-emerald-700/60 text-emerald-200 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between shadow-lg">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            {feedbackMsg}
+          </span>
+          <button
+            type="button"
+            onClick={() => setFeedbackMsg(null)}
+            className="text-emerald-400 hover:text-white cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Banner & Stats */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Top Banner Title */}
           <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <h2 className="text-base font-bold text-white flex items-center gap-2 font-display">
               <Repeat className="w-5 h-5 text-amber-400" />
-              Gestão de Reposições de Plantão
+              Gestão de Reposições de Plantão por Integrante
             </h2>
             <p className="text-xs text-slate-400 mt-1 max-w-xl">
-              Ligantes com faltas justificadas ou injustificadas devem cumprir reposição para zerar pendências
-              e poder receber o certificado oficial da liga.
+              Clique no nome do ligante para expandir a lista de pendências e reposições a cumprir.
+              Todas as reposições devem ser validadas para a liberação dos certificados.
             </p>
           </div>
-
-          {isCoordination && (
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              Agendar Nova Reposição
-            </button>
-          )}
         </div>
 
         {/* Stats Row */}
@@ -260,9 +310,9 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
+      {/* Filter, Search & Accordion Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           {[
             { id: 'pendentes', label: 'Pendentes', count: pendingCount, activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
             { id: 'cumpridas', label: 'Cumpridas', count: completedCount, activeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
@@ -283,13 +333,28 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
               </span>
             </button>
           ))}
+
+          <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
+
+          <button
+            onClick={expandAll}
+            className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+          >
+            Expandir Todos
+          </button>
+          <button
+            onClick={collapseAll}
+            className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+          >
+            Recolher Todos
+          </button>
         </div>
 
         <div className="relative">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por ligante..."
+            placeholder="Buscar por nome do integrante..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="pl-8 pr-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -297,206 +362,306 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
         </div>
       </div>
 
-      {/* Replacements List */}
-      <div className="space-y-3">
-        {filteredReplacements.length === 0 ? (
+      {/* Grouped Replacements Accordion List */}
+      <div className="space-y-3 pb-16">
+        {memberGroups.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center text-slate-400 text-xs">
             <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-            Nenhuma reposição encontrada para este filtro.
+            Nenhuma reposição pendente ou cumprida para este filtro.
           </div>
         ) : (
-          filteredReplacements.map(rep => (
-            <div
-              key={rep.id}
-              className={`bg-slate-900 border rounded-xl p-4 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                rep.completed
-                  ? 'border-slate-800 opacity-80'
-                  : 'border-amber-800/40 bg-gradient-to-r from-slate-900 to-amber-950/10'
-              }`}
-            >
-              <div className="flex items-start gap-3.5">
-                <div 
-                  onClick={() => onSelectMember(rep.member)}
-                  className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white text-sm cursor-pointer hover:border-emerald-500 transition-colors shrink-0"
+          memberGroups.map(({ member, replacements, pendingRepsCount, completedRepsCount }) => {
+            const isExpanded = Boolean(expandedMembers[member.id]);
+
+            return (
+              <div
+                key={member.id}
+                className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm transition-all"
+              >
+                {/* Member Header Card (Clickable to Expand/Collapse) */}
+                <div
+                  onClick={() => toggleExpand(member.id)}
+                  className="p-4 bg-slate-900 hover:bg-slate-800/60 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 select-none"
                 >
-                  {rep.member.name.charAt(0)}
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 
-                      onClick={() => onSelectMember(rep.member)}
-                      className="text-sm font-semibold text-white hover:text-emerald-400 transition-colors cursor-pointer"
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectMember(member);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white text-sm hover:border-emerald-500 transition-colors shrink-0"
+                      title="Ver ficha completa do membro"
                     >
-                      {rep.member.name}
-                    </h3>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                      {rep.member.role}
-                    </span>
-                    {rep.completed ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Cumprida
-                      </span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        Pendente
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mt-1">
-                    {rep.missedShiftDate && (
-                      <span className="flex items-center gap-1 text-white font-mono">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        Origem: {rep.missedShiftDate}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1 font-mono text-emerald-400 font-semibold">
-                      <Clock className="w-3.5 h-3.5" />
-                      {rep.scheduledHours || 12} horas
-                    </span>
-                    {rep.completedDate && (
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 mt-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        <span>Realizada em:</span>
-                        {isEditingDateId === rep.id ? (
-                          <div className="inline-flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              placeholder="DD/MM/AAAA"
-                              value={editingDates[rep.id] ?? rep.completedDate}
-                              onChange={e => setEditingDates(prev => ({ ...prev, [rep.id]: e.target.value }))}
-                              className="px-2 py-0.5 bg-slate-900 border border-slate-700 rounded text-xs text-white font-mono w-28"
-                            />
-                            <button
-                              onClick={() => handleSaveCompletedDate(rep.member.id, rep.id, editingDates[rep.id] ?? rep.completedDate ?? '')}
-                              className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-semibold cursor-pointer"
-                            >
-                              Salvar
-                            </button>
-                            <button
-                              onClick={() => setIsEditingDateId(null)}
-                              className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] cursor-pointer"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5">
-                            <span className="font-mono font-bold text-white text-xs">{rep.completedDate}</span>
-                            <button
-                              onClick={() => {
-                                setEditingDates(prev => ({ ...prev, [rep.id]: rep.completedDate || '' }));
-                                setIsEditingDateId(rep.id);
-                              }}
-                              className="text-slate-400 hover:text-white underline text-[10px] ml-1 cursor-pointer"
-                              title="Alterar data na qual foi feita a reposição"
-                            >
-                              Alterar data
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {rep.notes && (
-                    <p className="text-xs text-slate-300 mt-1">
-                      {rep.notes}
-                    </p>
-                  )}
-                  {rep.deadlineDescription && (
-                    <span className="text-amber-300 font-medium text-[11px] block mt-1">
-                      ⏰ Prazo Regulamentar: {rep.deadlineDescription}
-                    </span>
-                  )}
-                  {rep.warningIssuedForDelay && (
-                    <span className="text-rose-300 bg-rose-500/20 text-[10px] px-2 py-0.5 rounded font-bold border border-rose-500/30 inline-block mt-1">
-                      Advertido por não repor no prazo
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons & Date Input */}
-              {isCoordination ? (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end md:self-center">
-                  {!rep.completed ? (
-                    <>
-                      <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 rounded-lg px-2.5 py-1">
-                        <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span className="text-[11px] text-slate-300 whitespace-nowrap">Data feita:</span>
-                        <input
-                          type="text"
-                          placeholder="DD/MM/AAAA"
-                          value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
-                          onChange={e => setCompletionDates(prev => ({ ...prev, [rep.id]: e.target.value }))}
-                          className="px-1 py-0.5 bg-transparent text-white font-mono text-xs w-24 focus:outline-none"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleComplete(rep.member.id, rep.id, completionDates[rep.id] || new Date().toLocaleDateString('pt-BR'))}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer whitespace-nowrap"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Concluir (+{rep.scheduledHours || 12}h)
-                        </button>
-
-                        {!rep.warningIssuedForDelay && (
-                          <button
-                            onClick={() => handleLateWarning(rep.member.id, rep.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/70 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                            title="A não reposição acarreta em mais uma advertência"
-                          >
-                            +1 ADV
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => handleDeleteReplacement(rep.member.id, rep.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                          title="Remover reposição"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
-                        <CheckCircle2 className="w-4 h-4" />
-                        Horas Computadas
-                      </span>
-                      <button
-                        onClick={() => handleDeleteReplacement(rep.member.id, rep.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Remover reposição"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {member.name.charAt(0)}
                     </div>
-                  )}
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectMember(member);
+                          }}
+                          className="text-sm font-bold text-white hover:text-emerald-400 transition-colors cursor-pointer truncate font-display"
+                        >
+                          {member.name}
+                        </h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-medium">
+                          {member.role}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Horas totais no cadastro: <strong className="text-white font-mono">{member.accumulatedHours}h</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Summary Badges & Expand Icon */}
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                    {pendingRepsCount > 0 && (
+                      <span className="text-xs px-3 py-1 rounded-full font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {pendingRepsCount} {pendingRepsCount === 1 ? 'Reposição Pendente' : 'Reposições Pendentes'}
+                      </span>
+                    )}
+
+                    {completedRepsCount > 0 && (
+                      <span className="text-xs px-3 py-1 rounded-full font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {completedRepsCount} {completedRepsCount === 1 ? 'Cumprida' : 'Cumpridas'}
+                      </span>
+                    )}
+
+                    {pendingRepsCount === 0 && completedRepsCount === 0 && (
+                      <span className="text-xs px-3 py-1 rounded-full font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                        Sem pendências
+                      </span>
+                    )}
+
+                    <div className="p-1.5 text-slate-400 bg-slate-800/80 rounded-lg border border-slate-700/60">
+                      {isExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-slate-400" />
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="shrink-0 self-end md:self-center">
-                  {rep.completed ? (
-                    <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
-                      <CheckCircle2 className="w-4 h-4" />
-                      Horas Computadas
-                    </span>
-                  ) : (
-                    <span className="text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-lg font-semibold">
-                      Reposição Pendente
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          ))
+
+                {/* Expandable Body with Replacement Items */}
+                {isExpanded && (
+                  <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 space-y-3 animate-fadeIn">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-800/60 text-[11px] text-slate-400 uppercase font-semibold tracking-wider">
+                      <span>Lista de Pendências de Reposição ({replacements.length})</span>
+                      <span>Membro ID: {member.id}</span>
+                    </div>
+
+                    {replacements.length === 0 ? (
+                      <div className="p-4 text-center text-slate-400 text-xs italic bg-slate-900/40 rounded-xl">
+                        Nenhuma reposição corresponde ao filtro selecionado para este membro.
+                      </div>
+                    ) : (
+                      replacements.map(rep => (
+                        <div
+                          key={rep.id}
+                          className={`bg-slate-900 border rounded-xl p-3.5 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                            rep.completed
+                              ? 'border-slate-800 opacity-85'
+                              : 'border-amber-800/40 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/10'
+                          }`}
+                        >
+                          {/* Replacement Info */}
+                          <div className="space-y-1.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {rep.completed ? (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Reposição Cumprida
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" />
+                                  Pendência a Cumprir
+                                </span>
+                              )}
+
+                              <span className="flex items-center gap-1 font-mono text-emerald-400 font-bold text-xs">
+                                <Clock className="w-3.5 h-3.5" />
+                                {rep.scheduledHours || 12} horas
+                              </span>
+
+                              {rep.missedShiftDate && (
+                                <span className="flex items-center gap-1 text-slate-300 text-xs font-mono">
+                                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                  Falta de Origem: {rep.missedShiftDate}
+                                </span>
+                              )}
+                            </div>
+
+                            {rep.notes && (
+                              <p className="text-xs text-slate-300">
+                                {rep.notes}
+                              </p>
+                            )}
+
+                            {rep.deadlineDescription && (
+                              <span className="text-amber-300 font-medium text-[11px] block">
+                                ⏰ Prazo Regulamentar: {rep.deadlineDescription}
+                              </span>
+                            )}
+
+                            {rep.warningIssuedForDelay && (
+                              <span className="text-rose-300 bg-rose-500/20 text-[10px] px-2 py-0.5 rounded font-bold border border-rose-500/30 inline-block">
+                                Advertido por não repor no prazo
+                              </span>
+                            )}
+
+                            {/* Completed date details */}
+                            {rep.completedDate && (
+                              <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium pt-0.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                <span>Realizada em:</span>
+                                {isEditingDateId === rep.id ? (
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <input
+                                      type="text"
+                                      placeholder="DD/MM/AAAA"
+                                      value={editingDates[rep.id] ?? rep.completedDate}
+                                      onChange={e => setEditingDates(prev => ({ ...prev, [rep.id]: e.target.value }))}
+                                      className="px-2 py-0.5 bg-slate-900 border border-slate-700 rounded text-xs text-white font-mono w-28 focus:outline-none"
+                                    />
+                                    <button
+                                      onClick={() => handleSaveCompletedDate(member.id, rep.id, editingDates[rep.id] ?? rep.completedDate ?? '')}
+                                      className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-semibold cursor-pointer"
+                                    >
+                                      Salvar
+                                    </button>
+                                    <button
+                                      onClick={() => setIsEditingDateId(null)}
+                                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] cursor-pointer"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <span className="font-mono font-bold text-white text-xs">{rep.completedDate}</span>
+                                    <button
+                                      onClick={() => {
+                                        setEditingDates(prev => ({ ...prev, [rep.id]: rep.completedDate || '' }));
+                                        setIsEditingDateId(rep.id);
+                                      }}
+                                      className="text-slate-400 hover:text-white underline text-[10px] ml-1 cursor-pointer"
+                                      title="Alterar data na qual foi feita a reposição"
+                                    >
+                                      Alterar data
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action Buttons & Completion Input */}
+                          {isCoordination ? (
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end md:self-center">
+                              {!rep.completed ? (
+                                <>
+                                  <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 rounded-lg px-2.5 py-1">
+                                    <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                    <span className="text-[11px] text-slate-300 whitespace-nowrap">Data feita:</span>
+                                    <input
+                                      type="text"
+                                      placeholder="DD/MM/AAAA"
+                                      value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
+                                      onChange={e => setCompletionDates(prev => ({ ...prev, [rep.id]: e.target.value }))}
+                                      className="px-1 py-0.5 bg-transparent text-white font-mono text-xs w-24 focus:outline-none"
+                                    />
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleComplete(member.id, rep.id, completionDates[rep.id] || new Date().toLocaleDateString('pt-BR'))}
+                                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer whitespace-nowrap"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      Concluir (+{rep.scheduledHours || 12}h)
+                                    </button>
+
+                                    {!rep.warningIssuedForDelay && (
+                                      <button
+                                        onClick={() => handleLateWarning(member.id, rep.id)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/70 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                                        title="A não reposição acarreta em mais uma advertência"
+                                      >
+                                        +1 ADV
+                                      </button>
+                                    )}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingReplacement({ memberId: member.id, replacement: rep })}
+                                        className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
+                                        title="Editar reposição"
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleDeleteReplacement(member.id, rep.id)}
+                                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                        title="Remover reposição"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
+                                      <CheckCircle2 className="w-4 h-4" />
+                                      Horas Computadas
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingReplacement({ memberId: member.id, replacement: rep })}
+                                      className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
+                                      title="Editar reposição"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteReplacement(member.id, rep.id)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                      title="Remover reposição"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                )}
+                            </div>
+                          ) : (
+                            <div className="shrink-0 self-end md:self-center">
+                              {rep.completed ? (
+                                <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  Horas Computadas
+                                </span>
+                              ) : (
+                                <span className="text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-lg font-semibold">
+                                  Reposição Pendente
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
@@ -608,6 +773,15 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {/* Edit Replacement Modal */}
+      {editingReplacement && (
+        <QuickReplacementModal
+          members={members}
+          editingReplacement={editingReplacement}
+          onClose={() => setEditingReplacement(null)}
+          onUpdateMember={onUpdateMember}
+        />
       )}
     </div>
   );

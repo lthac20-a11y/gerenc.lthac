@@ -25,26 +25,26 @@ export const LeagueSettingsModal: React.FC<LeagueSettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative space-y-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative space-y-4 my-auto max-h-[96vh] flex flex-col overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+          className="absolute top-3.5 right-3.5 p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer z-10"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl">
             <Settings className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Configurações da Liga & Parâmetros de Certificado</h3>
-            <p className="text-xs text-slate-400">Personalize dados institucionais e critérios estatutários</p>
+            <h3 className="text-base font-bold text-white leading-tight">Configurações da Liga & Parâmetros</h3>
+            <p className="text-[11px] text-slate-400 leading-tight">Personalize dados institucionais e critérios estatutários</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs flex-1 overflow-y-auto pr-1">
           <div className="space-y-3">
             <h4 className="font-semibold text-emerald-400 uppercase text-[10px] tracking-wider">Identificação da Liga</h4>
             

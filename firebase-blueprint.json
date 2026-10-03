@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "A league member with their role, entry date, status, accumulated hours, absences, replacements, warnings, and shifts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "entryDate": { "type": "string" },
+        "role": { "type": "string", "enum": ["Ligante", "Coordenação"] },
+        "status": { "type": "string", "enum": ["ativo", "licenciado", "egresso", "desligado"] },
+        "accumulatedHours": { "type": "integer" },
+        "hoursUpdated": { "type": "boolean" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "notes": { "type": "string" },
+        "shifts": { "type": "array" },
+        "warnings": { "type": "array" },
+        "justifiedAbsences": { "type": "array" },
+        "unjustifiedAbsences": { "type": "array" },
+        "replacements": { "type": "array" }
+      },
+      "required": ["id", "name", "role", "status", "accumulatedHours"]
+    },
+    "LeagueConfig": {
+      "title": "LeagueConfig",
+      "description": "The configuration settings for the academic league and certificate eligibility rules.",
+      "type": "object",
+      "properties": {
+        "leagueName": { "type": "string" },
+        "leagueAcronym": { "type": "string" },
+        "institution": { "type": "string" },
+        "coordinatorName": { "type": "string" },
+        "coordinatorTitle": { "type": "string" },
+        "presidentName": { "type": "string" },
+        "minHoursForCertificate": { "type": "integer" },
+        "minActiveMonthsForCertificate": { "type": "integer" },
+        "maxUnjustifiedAbsencesAllowed": { "type": "integer" },
+        "maxActiveWarningsAllowed": { "type": "integer" },
+        "requireAllReplacementsCompleted": { "type": "boolean" },
+        "cityState": { "type": "string" }
+      },
+      "required": ["leagueName", "leagueAcronym", "institution"]
+    }
+  },
+  "firestore": {
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Store all individual academic league members."
+    },
+    "/config/league": {
+      "schema": "LeagueConfig",
+      "description": "Stores the central settings and parameters for the academic league."
+    }
+  }
+}

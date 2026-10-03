@@ -11,7 +11,6 @@ import { CertificateModal } from './components/CertificateModal';
 import { AddMemberModal } from './components/AddMemberModal';
 import { AddShiftModal } from './components/AddShiftModal';
 import { LeagueSettingsModal } from './components/LeagueSettingsModal';
-import { SpreadsheetModal } from './components/SpreadsheetModal';
 import { LoginScreen } from './components/LoginScreen';
 import { useAuth } from './context/AuthContext';
 
@@ -19,6 +18,20 @@ import { Member, LeagueConfig, ShiftRecord, RoleInLeague, ReplacementRecord, War
 import { INITIAL_MEMBERS, DEFAULT_LEAGUE_CONFIG } from './data/initialData';
 import { calculateLeagueStats, calculateReplacementDeadline, syncMemberReplacementsDeadlines } from './utils/leagueCalculations';
 import { ShiftBatchSubmission } from './components/AddShiftModal';
+
+// Firebase Firestore Imports
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { db, OperationType, handleFirestoreError } from './lib/firebase';
+import {
+  QuickReplacementModal,
+  QuickWarningModal,
+  DeleteMemberModal,
+} from './components/CoordinationModals';
+
+// Strip undefined properties before sending to Firestore
+function sanitizeForFirestore<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
 
 const STORAGE_MEMBERS_KEY = 'lthac_members_v2';
 const STORAGE_CONFIG_KEY = 'lthac_config_v2';
@@ -62,94 +75,131 @@ function resolveCoordinationRole(name: string, currentRole: string): RoleInLeagu
   return normalizeRole(currentRole);
 }
 
+function sanitizeMemberShifts(member: Member): { member: Member; changed: boolean } {
+  const shifts = member.shifts || [];
+  if (!shifts.some(s => s.isExcused || s.description === 'Abonado')) {
+    return { member, changed: false };
+  }
+
+  const updatedShifts = shifts.map(s => {
+    if (s.isExcused || s.description === 'Abonado') {
+      return {
+        ...s,
+        isExcused: undefined,
+        hours: s.hours || 12,
+        shiftStatus: (s.shiftStatus && s.shiftStatus !== 'concluido' ? s.shiftStatus : 'concluido') as 'concluido' | 'falta_justificada' | 'falta_injustificada',
+        description: s.description === 'Abonado' ? 'Plantão Concluído' : s.description,
+      };
+    }
+    return s;
+  });
+
+  return {
+    member: {
+      ...member,
+      shifts: updatedShifts,
+    },
+    changed: true,
+  };
+}
+
+/**
+ * Ensures every unjustifiedAbsence that has never been linked to a warning (!abs.warningId)
+ * has a corresponding registered WarningRecord. Once abs.warningId is set, if the user later
+ * deletes the warning from member.warnings, abs.warningId remains set so the deleted warning
+ * is NOT recreated.
+ */
+function ensureUnjustifiedAbsencesHaveWarnings(member: Member): { member: Member; changed: boolean } {
+  const { member: shiftSanitizedMember, changed: shiftChanged } = sanitizeMemberShifts(member);
+  const currentMember = shiftSanitizedMember;
+
+  const unjustified = currentMember.unjustifiedAbsences || [];
+  if (!unjustified.some(a => !a.warningId)) {
+    return { member: currentMember, changed: shiftChanged };
+  }
+
+  let changed = shiftChanged || true;
+  const nextWarnings: WarningRecord[] = [...(currentMember.warnings || [])];
+  const usedWarningIds = new Set<string>(
+    unjustified.map(a => a.warningId).filter((id): id is string => Boolean(id))
+  );
+
+  const nextUnjustified = unjustified.map((abs) => {
+    if (abs.warningId) {
+      return abs;
+    }
+
+    changed = true;
+
+    // Check if there is an existing unlinked warning we can pair with this unjustified absence
+    const unlinkedIdx = nextWarnings.findIndex(w => !usedWarningIds.has(w.id));
+    if (unlinkedIdx !== -1) {
+      const existingWarn = nextWarnings[unlinkedIdx];
+      usedWarningIds.add(existingWarn.id);
+      if (existingWarn.id === 'w-6-1' || existingWarn.reason.includes('04/10')) {
+        nextWarnings[unlinkedIdx] = {
+          ...existingWarn,
+          date: abs.date,
+          reason: `Advertência automática por falta não justificada em ${abs.date}${abs.reason ? ` (${abs.reason})` : ''}`,
+        };
+      }
+      return {
+        ...abs,
+        warningId: existingWarn.id,
+      };
+    }
+
+    const newWarnId = `w-${abs.id}`;
+    const newWarn: WarningRecord = {
+      id: newWarnId,
+      date: abs.date,
+      reason: `Advertência automática por falta não justificada em ${abs.date}${abs.reason ? ` (${abs.reason})` : ''}`,
+      severity: 'moderada',
+      active: true,
+    };
+    nextWarnings.push(newWarn);
+    usedWarningIds.add(newWarnId);
+
+    return {
+      ...abs,
+      warningId: newWarnId,
+    };
+  });
+
+  return {
+    member: {
+      ...currentMember,
+      warnings: nextWarnings,
+      unjustifiedAbsences: nextUnjustified,
+    },
+    changed,
+  };
+}
+
 export default function App() {
   const { user, isAuthenticated, isCoordination, isReader, loading } = useAuth();
 
-  // Members State
+  // State synchronized in real-time with Firebase Firestore
   const [members, setMembers] = useState<Member[]>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_MEMBERS_KEY) || localStorage.getItem('lthac_members_v1');
+      const stored = localStorage.getItem(STORAGE_MEMBERS_KEY);
       if (stored) {
-        const parsed: Member[] = JSON.parse(stored);
-        return parsed.map(m => {
-          const seenAbs = new Set<string>();
-          const dedupedJustified = (m.justifiedAbsences || []).filter(a => {
-            const key = `${a.date}-${a.monthKey || 'out/26'}-${a.type}-${a.reason}`;
-            if (seenAbs.has(key)) return false;
-            seenAbs.add(key);
-            return true;
-          });
-          const dedupedUnjustified = (m.unjustifiedAbsences || []).filter(a => {
-            const key = `${a.date}-${a.monthKey || 'out/26'}-${a.type}-${a.reason}`;
-            if (seenAbs.has(key)) return false;
-            seenAbs.add(key);
-            return true;
-          });
-
-          const sanitizedReplacements = (m.replacements || []).map(r => {
-            if (!r.notes || r.notes.includes('Agendado para meados de outubro') || r.notes.includes('Agendado para novembro')) {
-              return {
-                ...r,
-                notes: 'Referente à falta não justificada de 02/10/2026',
-              };
-            }
-            return r;
-          });
-
-          const sanitizedWarnings = (m.warnings || []).filter(w => {
-            const r = w.reason.toLowerCase();
-            return !r.includes('urgência sem cobertura') && 
-                   !r.includes('reincidência de ausência') && 
-                   !r.includes('descumprimento de escala');
-          });
-
-          // If Amanda Kalinoski, ensure official single warning is present
-          if (m.name.toLowerCase().includes('amanda kalinoski') && sanitizedWarnings.length === 0) {
-            sanitizedWarnings.push({
-              id: 'w-6-1',
-              date: '04/10/2026',
-              reason: 'Advertência por falta não justificada no plantão de 04/10 (out/26)',
-              severity: 'moderada',
-              active: true,
-            });
-          }
-
-          return {
-            ...m,
-            role: resolveCoordinationRole(m.name, m.role as string),
-            justifiedAbsences: dedupedJustified,
-            unjustifiedAbsences: dedupedUnjustified,
-            warnings: sanitizedWarnings,
-            replacements: syncMemberReplacementsDeadlines(sanitizedReplacements),
-          };
-        });
+        return JSON.parse(stored);
       }
     } catch (e) {
-      console.error('Failed to parse members from localStorage', e);
+      console.error('Failed to parse cached members', e);
     }
-    return INITIAL_MEMBERS;
+    return [];
   });
 
-  // League Config State
   const [config, setConfig] = useState<LeagueConfig>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_CONFIG_KEY) || localStorage.getItem('lthac_config_v1');
+      const stored = localStorage.getItem(STORAGE_CONFIG_KEY);
       if (stored) {
-        const parsed: LeagueConfig = JSON.parse(stored);
-        const nameNeedsUpdate = !parsed.leagueName || 
-          parsed.leagueName.includes('Urgência e Emergência Cirúrgica') || 
-          parsed.leagueName.includes('Liga Acadêmica de Trauma');
-        
-        return {
-          ...parsed,
-          leagueName: nameNeedsUpdate ? 'Liga do Trauma Hospital Angelina Caron' : parsed.leagueName,
-          leagueAcronym: parsed.leagueAcronym === 'LHT' || !parsed.leagueAcronym ? 'LTHAC' : parsed.leagueAcronym,
-          institution: (!parsed.institution || parsed.institution.includes('Faculdade de Medicina')) ? 'Hospital Angelina Caron' : parsed.institution,
-          minHoursForCertificate: 150, // enforce 150h default goal
-        };
+        return JSON.parse(stored);
       }
     } catch (e) {
-      console.error('Failed to parse config from localStorage', e);
+      console.error('Failed to parse cached config', e);
     }
     return DEFAULT_LEAGUE_CONFIG;
   });
@@ -162,25 +212,76 @@ export default function App() {
   const [certificateMember, setCertificateMember] = useState<Member | null>(null);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [isAddShiftOpen, setIsAddShiftOpen] = useState(false);
+  const [shiftModalMemberIds, setShiftModalMemberIds] = useState<string[]>([]);
+  const [isQuickRepOpen, setIsQuickRepOpen] = useState(false);
+  const [quickRepMemberId, setQuickRepMemberId] = useState<string | undefined>(undefined);
+  const [isQuickWarnOpen, setIsQuickWarnOpen] = useState(false);
+  const [quickWarnMemberId, setQuickWarnMemberId] = useState<string | undefined>(undefined);
+  const [isDeleteMemberOpen, setIsDeleteMemberOpen] = useState(false);
+  const [deleteTargetMemberId, setDeleteTargetMemberId] = useState<string | undefined>(undefined);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSpreadsheetOpen, setIsSpreadsheetOpen] = useState(false);
 
-  // Sync to localStorage
+  // Firestore Real-Time Listener (onSnapshot) sync
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_MEMBERS_KEY, JSON.stringify(members));
-    } catch (e) {
-      console.error('Failed to save members to localStorage', e);
-    }
-  }, [members]);
+    if (!isAuthenticated) return;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(config));
-    } catch (e) {
-      console.error('Failed to save config to localStorage', e);
-    }
-  }, [config]);
+    // 1. Listen in real-time to config document
+    const configDocRef = doc(db, 'config', 'league');
+    const unsubscribeConfig = onSnapshot(configDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as LeagueConfig;
+        setConfig(data);
+        localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(data));
+      } else {
+        // Automatically seed default league config in Firestore if not present
+        if (isCoordination) {
+          setDoc(configDocRef, DEFAULT_LEAGUE_CONFIG)
+            .catch(err => handleFirestoreError(err, OperationType.WRITE, 'config/league'));
+        }
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'config/league');
+    });
+
+    // 2. Listen in real-time to members collection
+    const membersColRef = collection(db, 'members');
+    const unsubscribeMembers = onSnapshot(membersColRef, (snapshot) => {
+      const list: Member[] = [];
+      const toSyncInFirestore: Member[] = [];
+
+      snapshot.forEach((docSnap) => {
+        const rawMember = docSnap.data() as Member;
+        const { member: reconciledMember, changed } = ensureUnjustifiedAbsencesHaveWarnings(rawMember);
+        list.push(reconciledMember);
+        if (changed) {
+          toSyncInFirestore.push(reconciledMember);
+        }
+      });
+
+      // Persist any newly linked automatic warnings for existing unjustified absences
+      if (toSyncInFirestore.length > 0) {
+        toSyncInFirestore.forEach((m) => {
+          const clean = sanitizeForFirestore(m);
+          setDoc(doc(db, 'members', m.id), clean).catch((err) =>
+            console.warn('Auto-sync warning for member deferred:', err)
+          );
+        });
+      }
+
+      // Maintain consistent sort order (by name)
+      list.sort((a, b) => a.name.localeCompare(b.name));
+
+      setMembers(list);
+      localStorage.setItem(STORAGE_MEMBERS_KEY, JSON.stringify(list));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'members');
+    });
+
+    return () => {
+      unsubscribeConfig();
+      unsubscribeMembers();
+    };
+  }, [isAuthenticated, isCoordination]);
 
   // Keep selectedMember in sync with updated members array
   useEffect(() => {
@@ -190,7 +291,7 @@ export default function App() {
         setSelectedMember(fresh);
       }
     }
-  }, [members]);
+  }, [members, selectedMember]);
 
   // Enforce reader permissions
   useEffect(() => {
@@ -201,129 +302,221 @@ export default function App() {
       setIsAddMemberOpen(false);
       setIsAddShiftOpen(false);
       setIsSettingsOpen(false);
-      setIsSpreadsheetOpen(false);
       setCertificateMember(null);
     }
   }, [isReader, currentTab]);
 
-  // Handlers
-  const handleUpdateMember = (updated: Member) => {
-    setMembers(prev => prev.map(m => m.id === updated.id ? updated : m));
-    setSelectedMember(updated);
-  };
-
-  const handleDeleteMember = (memberId: string) => {
-    setMembers(prev => prev.filter(m => m.id !== memberId));
-    if (selectedMember?.id === memberId) {
-      setSelectedMember(null);
+  // Handlers - Write directly to Firebase Firestore using setDoc / updateDoc / deleteDoc
+  const handleUpdateMember = async (updated: Member) => {
+    const cleanData = sanitizeForFirestore(updated);
+    try {
+      const memberRef = doc(db, 'members', updated.id);
+      await updateDoc(memberRef, cleanData as Record<string, any>).catch(async () => {
+        await setDoc(memberRef, cleanData);
+      });
+      if (selectedMember && selectedMember.id === updated.id) {
+        setSelectedMember(cleanData);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `members/${updated.id}`);
     }
   };
 
-  const handleAddMember = (newMember: Member) => {
-    setMembers(prev => [newMember, ...prev]);
+  const handleDeleteMember = async (memberId: string) => {
+    try {
+      await deleteDoc(doc(db, 'members', memberId));
+      if (selectedMember?.id === memberId) {
+        setSelectedMember(null);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `members/${memberId}`);
+    }
+  };
+
+  const handleAddMember = async (newMember: Member) => {
+    const cleanData = sanitizeForFirestore(newMember);
+    try {
+      await setDoc(doc(db, 'members', cleanData.id), cleanData);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `members/${cleanData.id}`);
+    }
+  };
+
+  const handleSaveConfig = async (newConfig: LeagueConfig) => {
+    const cleanConfig = sanitizeForFirestore(newConfig);
+    try {
+      await setDoc(doc(db, 'config', 'league'), cleanConfig);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/league');
+    }
   };
 
   // Quick Action: +12 Hours
-  const handleQuickAddHours = (memberId: string, hours = 12) => {
+  const handleQuickAddHours = async (memberId: string, hours = 12) => {
+    const m = members.find(x => x.id === memberId);
+    if (!m) return;
+
     const today = new Date();
     const dayStr = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const monthKey = 'out/26';
 
-    setMembers(prev => prev.map(m => {
-      if (m.id !== memberId) return m;
+    const newShift: ShiftRecord = {
+      id: `s-${Date.now()}`,
+      date: dayStr,
+      monthKey,
+      hours,
+      type: 'plantao',
+      description: 'Plantão de escala (+12h)',
+    };
 
-      const newShift: ShiftRecord = {
-        id: `s-${Date.now()}`,
-        date: dayStr,
-        monthKey,
-        hours,
-        type: 'plantao',
-        description: 'Plantão de escala (+12h)',
-      };
+    const updated: Member = {
+      ...m,
+      shifts: [newShift, ...m.shifts],
+      accumulatedHours: m.accumulatedHours + hours,
+      hoursUpdated: true,
+    };
 
-      return {
-        ...m,
-        shifts: [newShift, ...m.shifts],
-        accumulatedHours: m.accumulatedHours + hours,
-        hoursUpdated: true,
-      };
-    }));
+    try {
+      await setDoc(doc(db, 'members', m.id), updated);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `members/${m.id}`);
+    }
   };
 
-  // Quick Action: + Falta Justificada (FJ)
-  const handleQuickAddFJ = (memberId: string) => {
-    const today = new Date().toLocaleDateString('pt-BR');
-    setMembers(prev => prev.map(m => {
-      if (m.id !== memberId) return m;
-      const newAbsence = {
-        id: `ab-fj-${Date.now()}`,
-        date: today,
-        monthKey: 'out/26',
-        type: 'justificada' as const,
-        reason: 'Falta justificada com atestado/comprovante',
-        hasMedicalCertificate: true,
-        requiresReplacement: false,
-      };
-      return {
-        ...m,
-        justifiedAbsences: [newAbsence, ...m.justifiedAbsences],
-      };
-    }));
+  // Quick Action: + Falta Justificada (FJ) -> Sem advertência, mas gera reposição obrigatória
+  const handleQuickAddFJ = async (memberId: string) => {
+    const m = members.find(x => x.id === memberId);
+    if (!m) return;
+
+    const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const monthKey = 'out/26';
+    const absenceId = `ab-fj-${Date.now()}`;
+    const replacementId = `rep-${Date.now()}`;
+
+    const existingInMonth = [...m.justifiedAbsences, ...m.unjustifiedAbsences]
+      .filter(a => (a.monthKey || 'out/26') === monthKey).length;
+    const deadlineText = calculateReplacementDeadline(monthKey, existingInMonth + 1);
+
+    const newAbsence = {
+      id: absenceId,
+      date: today,
+      monthKey,
+      type: 'justificada' as const,
+      reason: `Falta justificada no plantão de ${today} (${monthKey})`,
+      hasMedicalCertificate: true,
+      requiresReplacement: true,
+      replacementId,
+    };
+
+    const newRep: ReplacementRecord = {
+      id: replacementId,
+      memberId: m.id,
+      absenceId,
+      scheduledDate: 'A definir',
+      scheduledHours: 12,
+      completed: false,
+      deadlineMonth: monthKey,
+      deadlineDescription: deadlineText,
+      missedShiftDate: `${today} (${monthKey})`,
+      notes: `Falta Justificada em ${today} (${monthKey}) — sem advertência, requer reposição. Prazo: ${deadlineText}`,
+    };
+
+    const updated: Member = {
+      ...m,
+      justifiedAbsences: [newAbsence, ...m.justifiedAbsences],
+      replacements: syncMemberReplacementsDeadlines([newRep, ...m.replacements]),
+    };
+
+    await handleUpdateMember(updated);
   };
 
-  // Quick Action: + Falta Não Justificada (FNJ) & gera reposição
-  const handleQuickAddFNJ = (memberId: string) => {
-    const today = new Date().toLocaleDateString('pt-BR');
-    setMembers(prev => prev.map(m => {
-      if (m.id !== memberId) return m;
-      const absenceId = `ab-fnj-${Date.now()}`;
-      const newAbsence = {
-        id: absenceId,
-        date: today,
-        monthKey: 'out/26',
-        type: 'injustificada' as const,
-        reason: 'Falta não justificada em escala',
-        requiresReplacement: true,
-      };
-      const newRep = {
-        id: `rep-${Date.now()}`,
-        memberId: m.id,
-        absenceId,
-        scheduledDate: 'A definir',
-        scheduledHours: 12,
-        completed: false,
-        notes: `Referente à falta não justificada de ${today}`,
-      };
-      return {
-        ...m,
-        unjustifiedAbsences: [newAbsence, ...m.unjustifiedAbsences],
-        replacements: [newRep, ...m.replacements],
-      };
-    }));
+  // Quick Action: + Falta Não Justificada (FNJ) -> Gera automaticamente 1 Advertência + 1 Reposição obrigatória
+  const handleQuickAddFNJ = async (memberId: string) => {
+    const m = members.find(x => x.id === memberId);
+    if (!m) return;
+
+    const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const monthKey = 'out/26';
+    const absenceId = `ab-fnj-${Date.now()}`;
+    const replacementId = `rep-${Date.now()}`;
+    const warningId = `w-${Date.now()}`;
+
+    const existingInMonth = [...m.justifiedAbsences, ...m.unjustifiedAbsences]
+      .filter(a => (a.monthKey || 'out/26') === monthKey).length;
+    const deadlineText = calculateReplacementDeadline(monthKey, existingInMonth + 1);
+
+    const newWarning: WarningRecord = {
+      id: warningId,
+      date: today,
+      reason: `Advertência automática por falta não justificada no plantão de ${today} (${monthKey})`,
+      severity: 'moderada',
+      active: true,
+    };
+
+    const newAbsence = {
+      id: absenceId,
+      date: today,
+      monthKey,
+      type: 'injustificada' as const,
+      reason: `Falta não justificada no plantão de ${today} (${monthKey})`,
+      requiresReplacement: true,
+      replacementId,
+      warningId,
+    };
+
+    const newRep: ReplacementRecord = {
+      id: replacementId,
+      memberId: m.id,
+      absenceId,
+      scheduledDate: 'A definir',
+      scheduledHours: 12,
+      completed: false,
+      deadlineMonth: monthKey,
+      deadlineDescription: deadlineText,
+      missedShiftDate: `${today} (${monthKey})`,
+      notes: `Falta Não Justificada em ${today} (${monthKey}) — gerou 1 ADV e requer reposição. Prazo: ${deadlineText}`,
+    };
+
+    const updated: Member = {
+      ...m,
+      warnings: [newWarning, ...m.warnings],
+      unjustifiedAbsences: [newAbsence, ...m.unjustifiedAbsences],
+      replacements: syncMemberReplacementsDeadlines([newRep, ...m.replacements]),
+    };
+
+    await handleUpdateMember(updated);
   };
 
   // Quick Action: + Advertência (ADV)
-  const handleQuickAddADV = (memberId: string) => {
+  const handleQuickAddADV = async (memberId: string) => {
+    const m = members.find(x => x.id === memberId);
+    if (!m) return;
+
     const today = new Date().toLocaleDateString('pt-BR');
-    setMembers(prev => prev.map(m => {
-      if (m.id !== memberId) return m;
-      const newWarn = {
-        id: `w-${Date.now()}`,
-        date: today,
-        reason: 'Advertência por falta não justificada no plantão de 04/10 (out/26)',
-        severity: 'moderada' as const,
-        active: true,
-      };
-      return {
-        ...m,
-        warnings: [newWarn, ...m.warnings],
-      };
-    }));
+    const newWarn = {
+      id: `w-${Date.now()}`,
+      date: today,
+      reason: 'Advertência por falta não justificada no plantão de 04/10 (out/26)',
+      severity: 'moderada' as const,
+      active: true,
+    };
+
+    const updated: Member = {
+      ...m,
+      warnings: [newWarn, ...m.warnings],
+    };
+
+    try {
+      await setDoc(doc(db, 'members', m.id), updated);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `members/${m.id}`);
+    }
   };
 
-  const handleAddShiftsToMembers = (memberIds: string[], shiftData: ShiftBatchSubmission) => {
-    setMembers(prev => prev.map(m => {
-      if (!memberIds.includes(m.id)) return m;
+  const handleAddShiftsToMembers = async (memberIds: string[], shiftData: ShiftBatchSubmission) => {
+    memberIds.forEach(async (id) => {
+      const m = members.find(member => member.id === id);
+      if (!m) return;
 
       const baseShift: ShiftRecord = {
         id: `s-${Date.now()}-${m.id}`,
@@ -336,12 +529,14 @@ export default function App() {
       };
 
       if (shiftData.shiftStatus === 'concluido') {
-        return {
+        const updated: Member = {
           ...m,
           shifts: [baseShift, ...m.shifts],
           accumulatedHours: m.accumulatedHours + shiftData.hours,
           hoursUpdated: true,
         };
+        await handleUpdateMember(updated);
+        return;
       }
 
       const existingInMonth = [...m.justifiedAbsences, ...m.unjustifiedAbsences]
@@ -377,7 +572,6 @@ export default function App() {
       const updatedReplacements = syncMemberReplacementsDeadlines([newRep, ...m.replacements]);
 
       if (shiftData.shiftStatus === 'falta_justificada') {
-        // Falta Justificada: NÃO gera advertência, mas GERA reposição obrigatória
         const newAbsence: typeof m.justifiedAbsences[0] = {
           id: absenceId,
           date: shiftData.date,
@@ -389,91 +583,121 @@ export default function App() {
           replacementId,
         };
 
-        return {
+        const updated: Member = {
           ...m,
           shifts: [baseShift, ...m.shifts],
           justifiedAbsences: [newAbsence, ...m.justifiedAbsences],
           replacements: updatedReplacements,
         };
+
+        await handleUpdateMember(updated);
+      } else {
+        const newWarning: WarningRecord = {
+          id: warningId,
+          date: shiftData.date,
+          reason: `Advertência por falta não justificada no plantão de ${shiftData.date} (${shiftData.monthKey})`,
+          severity: 'moderada',
+          active: true,
+        };
+
+        const newAbsence: typeof m.unjustifiedAbsences[0] = {
+          id: absenceId,
+          date: shiftData.date,
+          monthKey: shiftData.monthKey,
+          type: 'injustificada',
+          reason: `Falta não justificada no plantão de ${shiftData.date} (${shiftData.monthKey})`,
+          requiresReplacement: true,
+          shiftId,
+          replacementId,
+          warningId,
+        };
+
+        const updated: Member = {
+          ...m,
+          shifts: [baseShift, ...m.shifts],
+          warnings: [newWarning, ...m.warnings],
+          unjustifiedAbsences: [newAbsence, ...m.unjustifiedAbsences],
+          replacements: updatedReplacements,
+        };
+
+        await handleUpdateMember(updated);
       }
-
-      // Falta Não Justificada: GERA 1 ADVERTÊNCIA e GERA reposição obrigatória
-      const newWarning: WarningRecord = {
-        id: warningId,
-        date: shiftData.date,
-        reason: `Advertência por falta não justificada no plantão de ${shiftData.date} (${shiftData.monthKey})`,
-        severity: 'moderada',
-        active: true,
-      };
-
-      const newAbsence: typeof m.unjustifiedAbsences[0] = {
-        id: absenceId,
-        date: shiftData.date,
-        monthKey: shiftData.monthKey,
-        type: 'injustificada',
-        reason: `Falta não justificada no plantão de ${shiftData.date} (${shiftData.monthKey})`,
-        requiresReplacement: true,
-        shiftId,
-        replacementId,
-        warningId,
-      };
-
-      return {
-        ...m,
-        shifts: [baseShift, ...m.shifts],
-        warnings: [newWarning, ...m.warnings],
-        unjustifiedAbsences: [newAbsence, ...m.unjustifiedAbsences],
-        replacements: updatedReplacements,
-      };
-    }));
-  };
-
-  const handleImportMembers = (importedList: Partial<Member>[]) => {
-    setMembers(prev => {
-      const currentMap = new Map(prev.map(m => [m.name.toLowerCase().trim(), m]));
-      importedList.forEach(imp => {
-        if (!imp.name) return;
-        const key = imp.name.toLowerCase().trim();
-        const role = normalizeRole(imp.role as string || 'Ligante');
-        if (currentMap.has(key)) {
-          const existing = currentMap.get(key)!;
-          currentMap.set(key, {
-            ...existing,
-            ...imp,
-            role,
-            id: existing.id,
-            shifts: [...existing.shifts, ...(imp.shifts || [])],
-            warnings: [...existing.warnings, ...(imp.warnings || [])],
-            replacements: [...existing.replacements, ...(imp.replacements || [])],
-          } as Member);
-        } else {
-          currentMap.set(key, {
-            id: imp.id || `m-imp-${Date.now()}-${Math.random()}`,
-            name: imp.name,
-            entryDate: imp.entryDate || '01/01/2026',
-            role,
-            status: imp.status || 'ativo',
-            accumulatedHours: imp.accumulatedHours || 0,
-            hoursUpdated: true,
-            warnings: imp.warnings || [],
-            justifiedAbsences: imp.justifiedAbsences || [],
-            unjustifiedAbsences: imp.unjustifiedAbsences || [],
-            replacements: imp.replacements || [],
-            shifts: imp.shifts || [],
-          } as Member);
-        }
-      });
-      return Array.from(currentMap.values());
     });
   };
 
-  const handleResetOriginalData = () => {
-    setMembers(INITIAL_MEMBERS);
-    setConfig(DEFAULT_LEAGUE_CONFIG);
+  const handleImportMembers = async (importedList: Partial<Member>[]) => {
+    const currentMap = new Map(members.map(m => [m.name.toLowerCase().trim(), m]));
+    importedList.forEach(async (imp) => {
+      if (!imp.name) return;
+      const key = imp.name.toLowerCase().trim();
+      const role = normalizeRole(imp.role as string || 'Ligante');
+      let updated: Member;
+
+      if (currentMap.has(key)) {
+        const existing = currentMap.get(key)!;
+        updated = {
+          ...existing,
+          ...imp,
+          role,
+          id: existing.id,
+          shifts: [...existing.shifts, ...(imp.shifts || [])],
+          warnings: [...existing.warnings, ...(imp.warnings || [])],
+          replacements: [...existing.replacements, ...(imp.replacements || [])],
+        } as Member;
+      } else {
+        const id = imp.id || `m-imp-${Date.now()}-${Math.random()}`;
+        updated = {
+          id,
+          name: imp.name,
+          entryDate: imp.entryDate || '01/01/2026',
+          role,
+          status: imp.status || 'ativo',
+          accumulatedHours: imp.accumulatedHours || 0,
+          hoursUpdated: true,
+          warnings: imp.warnings || [],
+          justifiedAbsences: imp.justifiedAbsences || [],
+          unjustifiedAbsences: imp.unjustifiedAbsences || [],
+          replacements: imp.replacements || [],
+          shifts: imp.shifts || [],
+        } as Member;
+      }
+
+      try {
+        await setDoc(doc(db, 'members', updated.id), updated);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `members/${updated.id}`);
+      }
+    });
+  };
+
+  const handleResetOriginalData = async () => {
+    // Delete existing documents in Firestore
+    members.forEach(async (m) => {
+      try {
+        await deleteDoc(doc(db, 'members', m.id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `members/${m.id}`);
+      }
+    });
+
+    // Seed back initial members
+    INITIAL_MEMBERS.forEach(async (m) => {
+      try {
+        await setDoc(doc(db, 'members', m.id), m);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `members/${m.id}`);
+      }
+    });
+
+    // Reset config
+    try {
+      await setDoc(doc(db, 'config', 'league'), DEFAULT_LEAGUE_CONFIG);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/league');
+    }
+
     localStorage.removeItem(STORAGE_MEMBERS_KEY);
     localStorage.removeItem(STORAGE_CONFIG_KEY);
-    localStorage.removeItem('lthac_members_v1');
-    localStorage.removeItem('lthac_config_v1');
   };
 
   const stats = calculateLeagueStats(members, config);
@@ -500,15 +724,17 @@ export default function App() {
         config={config}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAddMember={() => setIsAddMemberOpen(true)}
-        onOpenAddShift={() => setIsAddShiftOpen(true)}
-        onOpenSpreadsheet={() => setIsSpreadsheetOpen(true)}
+        onOpenAddShift={() => {
+          setShiftModalMemberIds([]);
+          setIsAddShiftOpen(true);
+        }}
         activeMembersCount={stats.activeMembers}
         eligibleCertificatesCount={stats.eligibleCount}
         pendingReplacementsCount={stats.totalPendingReplacements}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-8 pb-20">
         {currentTab === 'dashboard' && (
           <DashboardView
             members={members}
@@ -516,7 +742,10 @@ export default function App() {
             onSelectMember={setSelectedMember}
             onNavigateTab={setCurrentTab}
             onOpenAddMember={() => setIsAddMemberOpen(true)}
-            onOpenAddShift={() => setIsAddShiftOpen(true)}
+            onOpenAddShift={() => {
+              setShiftModalMemberIds([]);
+              setIsAddShiftOpen(true);
+            }}
           />
         )}
 
@@ -527,6 +756,22 @@ export default function App() {
             onSelectMember={setSelectedMember}
             onOpenAddMember={() => setIsAddMemberOpen(true)}
             onOpenCertificateModal={setCertificateMember}
+            onOpenAddShiftForMember={(memberId) => {
+              setShiftModalMemberIds([memberId]);
+              setIsAddShiftOpen(true);
+            }}
+            onOpenAddReplacementForMember={(memberId) => {
+              setQuickRepMemberId(memberId);
+              setIsQuickRepOpen(true);
+            }}
+            onOpenAddWarningForMember={(memberId) => {
+              setQuickWarnMemberId(memberId);
+              setIsQuickWarnOpen(true);
+            }}
+            onRequestDeleteMember={(memberId) => {
+              setDeleteTargetMemberId(memberId);
+              setIsDeleteMemberOpen(true);
+            }}
           />
         )}
 
@@ -561,9 +806,10 @@ export default function App() {
           <CertificatesView
             members={members}
             config={config}
-            onUpdateConfig={setConfig}
+            onUpdateConfig={handleSaveConfig}
             onOpenCertificateModal={setCertificateMember}
             onSelectMember={setSelectedMember}
+            onUpdateMember={handleUpdateMember}
           />
         )}
       </main>
@@ -604,8 +850,48 @@ export default function App() {
       {isAddShiftOpen && isCoordination && (
         <AddShiftModal
           members={members}
-          onClose={() => setIsAddShiftOpen(false)}
+          initialMemberIds={shiftModalMemberIds}
+          onClose={() => {
+            setIsAddShiftOpen(false);
+            setShiftModalMemberIds([]);
+          }}
           onAddShiftsToMembers={handleAddShiftsToMembers}
+        />
+      )}
+
+      {isQuickRepOpen && isCoordination && (
+        <QuickReplacementModal
+          members={members}
+          initialMemberId={quickRepMemberId}
+          onClose={() => {
+            setIsQuickRepOpen(false);
+            setQuickRepMemberId(undefined);
+          }}
+          onUpdateMember={handleUpdateMember}
+        />
+      )}
+
+      {isQuickWarnOpen && isCoordination && (
+        <QuickWarningModal
+          members={members}
+          initialMemberId={quickWarnMemberId}
+          onClose={() => {
+            setIsQuickWarnOpen(false);
+            setQuickWarnMemberId(undefined);
+          }}
+          onUpdateMember={handleUpdateMember}
+        />
+      )}
+
+      {isDeleteMemberOpen && isCoordination && (
+        <DeleteMemberModal
+          members={members}
+          initialMemberId={deleteTargetMemberId}
+          onClose={() => {
+            setIsDeleteMemberOpen(false);
+            setDeleteTargetMemberId(undefined);
+          }}
+          onConfirmDelete={handleDeleteMember}
         />
       )}
 
@@ -613,19 +899,10 @@ export default function App() {
         <LeagueSettingsModal
           config={config}
           onClose={() => setIsSettingsOpen(false)}
-          onSaveConfig={setConfig}
+          onSaveConfig={handleSaveConfig}
           onResetToDefaults={() => {
-            setConfig(DEFAULT_LEAGUE_CONFIG);
+            handleSaveConfig(DEFAULT_LEAGUE_CONFIG);
           }}
-        />
-      )}
-
-      {isSpreadsheetOpen && isCoordination && (
-        <SpreadsheetModal
-          members={members}
-          onClose={() => setIsSpreadsheetOpen(false)}
-          onImportMembers={handleImportMembers}
-          onResetOriginalData={handleResetOriginalData}
         />
       )}
     </div>

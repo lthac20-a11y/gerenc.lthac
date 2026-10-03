@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, Calendar, Plus, Check, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
-import { Member, MONTH_COLUMNS } from '../types/league';
+import { Member } from '../types/league';
 import { calculateReplacementDeadline } from '../utils/leagueCalculations';
+import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, formatFullMonthYear, parseMonthKey } from '../utils/dateUtils';
 
 export type ShiftSubmissionStatus = 'concluido' | 'falta_justificada' | 'falta_injustificada';
 
@@ -16,22 +17,38 @@ export interface ShiftBatchSubmission {
 
 interface AddShiftModalProps {
   members: Member[];
+  initialMemberIds?: string[];
   onClose: () => void;
   onAddShiftsToMembers: (memberIds: string[], shiftData: ShiftBatchSubmission) => void;
 }
 
 export const AddShiftModal: React.FC<AddShiftModalProps> = ({
   members,
+  initialMemberIds = [],
   onClose,
   onAddShiftsToMembers,
 }) => {
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
-  const [date, setDate] = useState('02/10');
-  const [monthKey, setMonthKey] = useState('out/26');
+  const currentYear = getCurrentYear();
+  const currentMonthIdx = getCurrentMonthIndex();
+
+  const dynamicMonthColumns = [
+    ...getMonthColumnsForYear(currentYear - 1),
+    ...getMonthColumnsForYear(currentYear),
+    ...getMonthColumnsForYear(currentYear + 1),
+  ];
+
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(initialMemberIds);
+  const [date, setDate] = useState(() => {
+    const now = new Date();
+    return now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  });
+  const [monthKey, setMonthKey] = useState(() => formatMonthKey(currentMonthIdx, currentYear));
   const [hours, setHours] = useState(12);
   const [shiftStatus, setShiftStatus] = useState<ShiftSubmissionStatus>('concluido');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const toggleMember = (id: string) => {
+    setErrorMsg(null);
     if (selectedMemberIds.includes(id)) {
       setSelectedMemberIds(selectedMemberIds.filter(mId => mId !== id));
     } else {
@@ -40,6 +57,7 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
   };
 
   const selectAll = () => {
+    setErrorMsg(null);
     if (selectedMemberIds.length === members.length) {
       setSelectedMemberIds([]);
     } else {
@@ -50,7 +68,7 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedMemberIds.length === 0) {
-      alert('Selecione pelo menos um ligante para a escala.');
+      setErrorMsg('Selecione pelo menos um integrante para lançar o plantão.');
       return;
     }
 
@@ -77,26 +95,26 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
   const sampleDeadlineTwo = calculateReplacementDeadline(monthKey, 2);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl relative space-y-4 my-auto">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-xl w-full p-4 sm:p-5 shadow-2xl relative space-y-3.5 my-auto max-h-[96vh] flex flex-col overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+          className="absolute top-3.5 right-3.5 p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer z-10"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
             <Calendar className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Lançar Plantão na Escala</h3>
-            <p className="text-xs text-slate-400">Atribua plantões, faltas justificadas ou faltas não justificadas</p>
+            <h3 className="text-base font-bold text-white leading-tight">Lançar Plantão na Escala</h3>
+            <p className="text-[11px] text-slate-400 leading-tight">Atribua plantões, faltas justificadas ou faltas não justificadas</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-3 text-xs flex-1 overflow-y-auto pr-1">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-slate-300 font-semibold block uppercase text-[10px] mb-1">Data (Dia/Mês) *</label>
@@ -117,9 +135,14 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
                 onChange={e => setMonthKey(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono"
               >
-                {MONTH_COLUMNS.map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
+                {dynamicMonthColumns.map(m => {
+                  const { monthIndex, year } = parseMonthKey(m);
+                  return (
+                    <option key={m} value={m}>
+                      {m} ({formatFullMonthYear(monthIndex, year)})
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -262,6 +285,12 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
               })}
             </div>
           </div>
+
+          {errorMsg && (
+            <div className="p-2.5 bg-rose-950/60 border border-rose-800/70 rounded-xl text-rose-300 text-xs font-medium">
+              {errorMsg}
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
             <button

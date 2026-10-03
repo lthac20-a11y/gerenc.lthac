@@ -95,31 +95,35 @@ export function parseImportedCSV(csvText: string): Partial<Member>[] {
     const repCount = repIdx !== -1 ? parseInt(cols[repIdx] || '0', 10) || 0 : 0;
     const repDates = repDatesIdx !== -1 && cols[repDatesIdx] ? cols[repDatesIdx].trim() : '';
 
-    const warnings = Array.from({ length: advCount }, (_, idx) => ({
-      id: `w-imp-${Date.now()}-${idx}`,
+    const totalWarningsCount = Math.max(advCount, fnjCount);
+    const warnings = Array.from({ length: totalWarningsCount }, (_, idx) => ({
+      id: `w-imp-${Date.now()}-${i}-${idx}`,
       date: entryDate,
-      reason: 'Advertência importada da planilha',
+      reason: idx < fnjCount
+        ? 'Advertência automática por falta não justificada'
+        : 'Advertência importada da planilha',
       severity: 'moderada' as const,
       active: true,
     }));
 
     const justifiedAbsences = Array.from({ length: fjCount }, (_, idx) => ({
-      id: `fj-imp-${Date.now()}-${idx}`,
+      id: `fj-imp-${Date.now()}-${i}-${idx}`,
       date: entryDate,
       type: 'justificada' as const,
       reason: 'Falta justificada importada',
-      requiresReplacement: false,
+      requiresReplacement: true,
     }));
 
     const unjustifiedAbsences = Array.from({ length: fnjCount }, (_, idx) => ({
-      id: `fnj-imp-${Date.now()}-${idx}`,
+      id: `fnj-imp-${Date.now()}-${i}-${idx}`,
       date: entryDate,
       type: 'injustificada' as const,
       reason: 'Falta não justificada importada',
       requiresReplacement: true,
+      warningId: warnings[idx]?.id,
     }));
 
-    const replacements = Array.from({ length: Math.max(repCount, fnjCount) }, (_, idx) => ({
+    const replacements = Array.from({ length: Math.max(repCount, fnjCount + fjCount) }, (_, idx) => ({
       id: `rep-imp-${Date.now()}-${idx}`,
       memberId: `imp-${i}`,
       scheduledDate: repDates || 'A definir',

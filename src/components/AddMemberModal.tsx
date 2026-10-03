@@ -12,7 +12,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
   onAddMember,
 }) => {
   const [name, setName] = useState('');
-  const [entryDate, setEntryDate] = useState('02/10/2026');
+  const [entryDate, setEntryDate] = useState(() => new Date().toLocaleDateString('pt-BR'));
   const [role, setRole] = useState<RoleInLeague>('Ligante');
   const [initialHours, setInitialHours] = useState(0);
   const [email, setEmail] = useState('');
@@ -35,8 +35,8 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
       unjustifiedAbsences: [],
       replacements: [],
       shifts: [],
-      email: email.trim() || undefined,
-      phone: phone.trim() || undefined,
+      ...(email.trim() ? { email: email.trim() } : {}),
+      ...(phone.trim() ? { phone: phone.trim() } : {}),
     };
 
     onAddMember(newMember);
@@ -44,26 +44,26 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl relative space-y-4 my-auto max-h-[96vh] flex flex-col overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+          className="absolute top-3.5 right-3.5 p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer z-10"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl">
             <UserPlus className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Cadastrar Membro da Liga</h3>
-            <p className="text-xs text-slate-400">Adicione o nome, cargo (Ligante ou Coordenação) e data de entrada</p>
+            <h3 className="text-base font-bold text-white leading-tight">Cadastrar Membro da Liga</h3>
+            <p className="text-[11px] text-slate-400 leading-tight">Adicione o nome, cargo (Ligante ou Coordenação) e data de entrada</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-3 text-xs flex-1 overflow-y-auto pr-1">
           <div>
             <label className="text-slate-300 font-semibold block uppercase text-[10px]">Nome Completo *</label>
             <input
