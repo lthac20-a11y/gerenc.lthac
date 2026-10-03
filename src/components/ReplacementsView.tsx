@@ -7,6 +7,7 @@ import {
   Clock, 
   Search, 
   AlertCircle,
+  AlertTriangle,
   Trash2,
   ChevronDown,
   ChevronUp,
@@ -21,7 +22,7 @@ import {
   syncMemberReplacementsDeadlines,
   completeReplacementAndDismissAbsence
 } from '../utils/leagueCalculations';
-import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear } from '../utils/dateUtils';
+import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, getReplacementDeadlineInfo } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { QuickReplacementModal } from './CoordinationModals';
 
@@ -438,60 +439,81 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                         Nenhuma reposição corresponde ao filtro selecionado para este membro.
                       </div>
                     ) : (
-                      replacements.map(rep => (
-                        <div
-                          key={rep.id}
-                          className={`bg-slate-900 border rounded-xl p-3.5 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                            rep.completed
-                              ? 'border-slate-800 opacity-85'
-                              : 'border-amber-800/40 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/10'
-                          }`}
-                        >
-                          {/* Replacement Info */}
-                          <div className="space-y-1.5 min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {rep.completed ? (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Reposição Cumprida
+                      replacements.map(rep => {
+                        const originMonth = rep.deadlineMonth || 'out/26';
+                        const absencesInSameMonth = member.replacements.filter(r => (r.deadlineMonth || 'out/26') === originMonth).length;
+                        const { deadlineText, isOverdue } = getReplacementDeadlineInfo(originMonth, absencesInSameMonth);
+
+                        return (
+                          <div
+                            key={rep.id}
+                            className={`bg-slate-900 border rounded-xl p-3.5 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                              rep.completed
+                                ? 'border-slate-800 opacity-85'
+                                : isOverdue
+                                ? 'border-rose-500/60 bg-gradient-to-r from-slate-900 via-slate-900 to-rose-950/20 shadow-md shadow-rose-950/20'
+                                : 'border-amber-800/40 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/10'
+                            }`}
+                          >
+                            {/* Replacement Info */}
+                            <div className="space-y-1.5 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {rep.completed ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Reposição Cumprida
+                                  </span>
+                                ) : isOverdue ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 shadow-xs animate-pulse">
+                                    <AlertTriangle className="w-3 h-3 text-rose-400" />
+                                    Pendência Expirada
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3" />
+                                    Pendência a Cumprir
+                                  </span>
+                                )}
+
+                                <span className="flex items-center gap-1 font-mono text-emerald-400 font-bold text-xs">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  {rep.scheduledHours || 12} horas
                                 </span>
-                              ) : (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" />
-                                  Pendência a Cumprir
-                                </span>
+
+                                {rep.missedShiftDate && (
+                                  <span className="flex items-center gap-1 text-slate-300 text-xs font-mono">
+                                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                    Falta de Origem: {rep.missedShiftDate}
+                                  </span>
+                                )}
+                              </div>
+
+                              {rep.notes && !rep.notes.toLowerCase().includes('falta referente ao mês') && (
+                                <p className="text-xs text-slate-300">
+                                  {rep.notes}
+                                </p>
                               )}
 
-                              <span className="flex items-center gap-1 font-mono text-emerald-400 font-bold text-xs">
-                                <Clock className="w-3.5 h-3.5" />
-                                {rep.scheduledHours || 12} horas
-                              </span>
+                              {!rep.completed && (
+                                <div className="pt-0.5">
+                                  {isOverdue ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-xs">
+                                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                      <span>⚠️ Prazo Expirado - Sujeito a Advertência</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-amber-300 font-semibold text-xs flex items-center gap-1.5">
+                                      {deadlineText}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
 
-                              {rep.missedShiftDate && (
-                                <span className="flex items-center gap-1 text-slate-300 text-xs font-mono">
-                                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                                  Falta de Origem: {rep.missedShiftDate}
+                              {rep.warningIssuedForDelay && (
+                                <span className="text-rose-300 bg-rose-500/20 text-[10px] px-2 py-0.5 rounded font-bold border border-rose-500/30 inline-block mt-1">
+                                  Advertência disciplinar emitida por atraso
                                 </span>
                               )}
-                            </div>
-
-                            {rep.notes && (
-                              <p className="text-xs text-slate-300">
-                                {rep.notes}
-                              </p>
-                            )}
-
-                            {rep.deadlineDescription && (
-                              <span className="text-amber-300 font-medium text-[11px] block">
-                                ⏰ Prazo Regulamentar: {rep.deadlineDescription}
-                              </span>
-                            )}
-
-                            {rep.warningIssuedForDelay && (
-                              <span className="text-rose-300 bg-rose-500/20 text-[10px] px-2 py-0.5 rounded font-bold border border-rose-500/30 inline-block">
-                                Advertido por não repor no prazo
-                              </span>
-                            )}
 
                             {/* Completed date details */}
                             {rep.completedDate && (
@@ -632,7 +654,8 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                             </div>
                           )}
                         </div>
-                      ))
+                      );
+                    })
                     )}
                   </div>
                 )}

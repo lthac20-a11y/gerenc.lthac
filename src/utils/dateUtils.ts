@@ -105,6 +105,51 @@ export function getQuartersForYear(year: number) {
 }
 
 /**
+ * Retorna a chave do mês limite (ex: 'out/26' + 1 mês -> 'nov/26')
+ */
+export function getDeadlineMonthKey(originMonthKey: string, monthsToAdd: number = 1): string {
+  const { monthIndex, year } = parseMonthKey(originMonthKey);
+  const totalMonths = monthIndex + monthsToAdd;
+  const targetMonthIndex = (totalMonths % 12 + 12) % 12;
+  const targetYear = year + Math.floor(totalMonths / 12);
+  return formatMonthKey(targetMonthIndex, targetYear);
+}
+
+/**
+ * Verifica se a data do mês limite já expirou em relação ao mês/ano atual do sistema
+ */
+export function isDeadlineOverdue(deadlineMonthKey: string): boolean {
+  if (!deadlineMonthKey) return false;
+  const { monthIndex: deadlineMonth, year: deadlineYear } = parseMonthKey(deadlineMonthKey);
+  const currentYear = getCurrentYear();
+  const currentMonth = getCurrentMonthIndex();
+
+  if (currentYear > deadlineYear) return true;
+  if (currentYear === deadlineYear && currentMonth > deadlineMonth) return true;
+  return false;
+}
+
+/**
+ * Retorna o texto formatado do prazo limite e flag de vencimento para os cards de reposição
+ */
+export function getReplacementDeadlineInfo(originMonthKey: string, absencesInSameMonth: number = 1): {
+  deadlineMonthKey: string;
+  deadlineText: string;
+  isOverdue: boolean;
+} {
+  const monthsToAdd = absencesInSameMonth >= 2 ? 2 : 1;
+  const deadlineMonthKey = getDeadlineMonthKey(originMonthKey || 'out/26', monthsToAdd);
+  const isOverdue = isDeadlineOverdue(deadlineMonthKey);
+  const deadlineText = `⏳ Prazo Limite: até final de ${deadlineMonthKey}`;
+
+  return {
+    deadlineMonthKey,
+    deadlineText,
+    isOverdue,
+  };
+}
+
+/**
  * Calcula o prazo de reposição dinâmico avançando os meses e viradas de ano corretamente
  */
 export function calculateDynamicReplacementDeadline(currentMonthKey: string, absencesInSameMonth: number): string {
