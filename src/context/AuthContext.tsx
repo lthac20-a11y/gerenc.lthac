@@ -31,9 +31,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [customDemoEmail, setCustomDemoEmail] = useState<string | null>(() => {
-    return localStorage.getItem('lthac_demo_user_email');
-  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -44,7 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const effectiveEmail = user?.email || customDemoEmail;
+  const effectiveEmail = user?.email || null;
   const role: UserRole = getUserRole(effectiveEmail);
   const isCoordination = role === 'Coordenação';
   const isReader = role === 'Leitor';
@@ -52,20 +49,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithEmail = async (email: string, pass: string) => {
     setLoading(true);
     try {
-      localStorage.removeItem('lthac_demo_user_email');
-      setCustomDemoEmail(null);
       await signInWithEmailAndPassword(auth, email.trim(), pass);
-    } catch (err: any) {
-      // If user doesn't exist yet, try creating it automatically for seamless first-time access
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-        try {
-          await createUserWithEmailAndPassword(auth, email.trim(), pass);
-          return;
-        } catch (subErr) {
-          throw err;
-        }
-      }
-      throw err;
     } finally {
       setLoading(false);
     }
@@ -74,8 +58,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signupWithEmail = async (email: string, pass: string) => {
     setLoading(true);
     try {
-      localStorage.removeItem('lthac_demo_user_email');
-      setCustomDemoEmail(null);
       await createUserWithEmailAndPassword(auth, email.trim(), pass);
     } finally {
       setLoading(false);
@@ -85,8 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithGoogle = async () => {
     setLoading(true);
     try {
-      localStorage.removeItem('lthac_demo_user_email');
-      setCustomDemoEmail(null);
       await signInWithPopup(auth, googleProvider);
     } finally {
       setLoading(false);
@@ -94,28 +74,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loginAsDemo = async (demoEmail: string) => {
-    // Allows instant 1-click login for test credentials
     setLoading(true);
     try {
-      const email = demoEmail.trim();
-      const defaultPass = 'lthac2026';
-      
-      try {
-        await signInWithEmailAndPassword(auth, email, defaultPass);
-      } catch (err: any) {
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-          try {
-            await createUserWithEmailAndPassword(auth, email, defaultPass);
-          } catch (createErr) {
-            // Fallback to local session demo state
-            setCustomDemoEmail(email);
-            localStorage.setItem('lthac_demo_user_email', email);
-          }
-        } else {
-          setCustomDemoEmail(email);
-          localStorage.setItem('lthac_demo_user_email', email);
-        }
-      }
+      await signInWithEmailAndPassword(auth, demoEmail.trim(), 'lthac2026');
     } finally {
       setLoading(false);
     }
@@ -124,15 +85,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setLoading(true);
     try {
-      localStorage.removeItem('lthac_demo_user_email');
-      setCustomDemoEmail(null);
       await firebaseSignOut(auth);
     } finally {
       setLoading(false);
     }
   };
 
-  const isAuthenticated = Boolean(user || customDemoEmail);
+  const isAuthenticated = Boolean(user);
 
   return (
     <AuthContext.Provider
