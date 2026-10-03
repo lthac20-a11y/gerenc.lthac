@@ -151,6 +151,26 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
         </div>
       </div>
 
+      {/* Banner de Aviso Regimental: 3 Advertências = Desligamento Automático */}
+      <div className="bg-gradient-to-r from-rose-950/80 via-slate-900 to-rose-950/80 border border-rose-600/50 rounded-2xl p-4 shadow-lg flex items-start gap-3.5 text-xs">
+        <div className="p-2 bg-rose-500/20 text-rose-400 border border-rose-500/40 rounded-xl shrink-0 mt-0.5">
+          <AlertTriangle className="w-5 h-5 text-rose-400" />
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-extrabold text-rose-300 text-sm uppercase tracking-wide font-display">
+              Aviso Regimental Disciplinar
+            </h4>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-200 border border-rose-500/40 font-mono font-bold">
+              REGRA DE DESLIGAMENTO
+            </span>
+          </div>
+          <p className="text-slate-200 leading-relaxed">
+            Ao atingir <strong>3 (três) advertências ativas</strong>, o ligante é <strong>automaticamente desligado da liga</strong> e perde a elegibilidade para certificação e atividades acadêmicas.
+          </p>
+        </div>
+      </div>
+
       {/* 2. SEARCH BAR & ACCORDION CONTROLS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
         <div className="relative flex-1 max-w-md">

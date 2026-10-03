@@ -296,15 +296,12 @@ export default function App() {
   // Enforce reader permissions
   useEffect(() => {
     if (isReader) {
-      if (currentTab === 'certificates') {
-        setCurrentTab('members');
-      }
       setIsAddMemberOpen(false);
       setIsAddShiftOpen(false);
       setIsSettingsOpen(false);
       setCertificateMember(null);
     }
-  }, [isReader, currentTab]);
+  }, [isReader]);
 
   // Handlers - Write directly to Firebase Firestore using setDoc / updateDoc / deleteDoc
   const handleUpdateMember = async (updated: Member) => {
@@ -802,7 +799,7 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'certificates' && isCoordination && (
+        {currentTab === 'certificates' && (
           <CertificatesView
             members={members}
             config={config}

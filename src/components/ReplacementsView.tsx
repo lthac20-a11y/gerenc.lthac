@@ -270,47 +270,19 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
         </div>
       )}
 
-      {/* Top Banner & Stats */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          {/* Top Banner Title */}
-          <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2 font-display">
-              <Repeat className="w-5 h-5 text-amber-400" />
-              Gestão de Reposições de Plantão por Integrante
-            </h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-xl">
-              Clique no nome do ligante para expandir a lista de pendências e reposições a cumprir.
-              Todas as reposições devem ser validadas para a liberação dos certificados.
-            </p>
-          </div>
-        </div>
+      {/* Top Banner & Prazos Regimentais */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-3">
+        <h2 className="text-base font-bold text-white flex items-center gap-2 font-display">
+          <Repeat className="w-5 h-5 text-amber-400" />
+          Gestão de Reposições de Plantão por Integrante
+        </h2>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-800">
-          <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-800">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold">Reposições Pendentes</span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-bold text-amber-400 font-mono">{pendingCount}</span>
-              <span className="text-xs text-slate-400">exigem cumprimento</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-800">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold">Reposições Concluídas</span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-bold text-emerald-400 font-mono">{completedCount}</span>
-              <span className="text-xs text-slate-400">horas creditadas</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-800">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold">Prazos Regimentais</span>
-            <p className="text-[11px] text-slate-300 mt-1 leading-tight">
-              • 1 falta de plantão = repor no <strong>mês seguinte</strong>.<br />
-              • 2 faltas no mesmo mês = o acadêmico terá os <strong>próximos 2 meses seguintes</strong> para repor esses 2 plantões.<br />
-              <span className="text-amber-300 font-medium">• Não repor no prazo = +1 advertência</span>
-            </p>
+        <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+          <h3 className="text-xs text-amber-400 uppercase font-bold tracking-wider">Prazos Regimentais</h3>
+          <div className="text-xs text-slate-200 leading-relaxed font-sans space-y-1">
+            <p>• 1 falta de plantão = repor no mês seguinte.</p>
+            <p>• 2 faltas no mesmo mês = o acadêmico terá os próximos 2 meses seguintes para repor esses 2 plantões.</p>
+            <p className="text-amber-300 font-medium">• Não repor no prazo = +1 advertência</p>
           </div>
         </div>
       </div>

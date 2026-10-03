@@ -47,11 +47,10 @@ export const Header: React.FC<HeaderProps> = ({
       label: 'Diretoria', 
       icon: Award, 
       highlight: eligibleCertificatesCount > 0 ? eligibleCertificatesCount : undefined,
-      coordinationOnly: true 
     },
   ];
 
-  const visibleNavItems = allNavItems.filter(item => !item.coordinationOnly || isCoordination);
+  const visibleNavItems = allNavItems;
 
   return (
     <header className="bg-[#0b131f] border-b border-slate-800 text-white sticky top-0 z-50 shadow-xl select-none">

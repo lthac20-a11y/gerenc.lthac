@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Member, LeagueConfig, LeadershipMemberConfig } from '../types/league';
 import { DEFAULT_LEADERSHIP_BOARD, DEFAULT_LEAGUE_CONFIG } from '../data/initialData';
+import { useAuth } from '../context/AuthContext';
 
 interface CertificatesViewProps {
   members: Member[];
@@ -123,6 +124,7 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
   onSelectMember,
   onUpdateMember,
 }) => {
+  const { isCoordination } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'aptos' | 'inaptos' | 'pending-cert' | 'pending-badge'>('all');
   
@@ -221,6 +223,7 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
   // Alternância direta do status do Certificado com persistência imediata
   const handleToggleCertificate = (member: Member, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isCoordination) return;
     const updated: Member = {
       ...member,
       certificateEmitted: !member.certificateEmitted,
@@ -231,6 +234,7 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
   // Alternância direta do status do Crachá com persistência imediata
   const handleToggleBadge = (member: Member, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isCoordination) return;
     const isNowCollected = !member.badgeCollected;
     const updated: Member = {
       ...member,
@@ -271,16 +275,18 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
             </div>
             
             {/* Botão de Editar Metas e Parâmetros */}
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsEditConfigModalOpen(true)}
-                className="inline-flex items-center gap-2 px-4.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg shadow-emerald-950/50 border border-emerald-500/50 transition-all cursor-pointer"
-              >
-                <Settings className="w-4 h-4 text-emerald-200" />
-                <span>Editar Metas e Parâmetros</span>
-              </button>
-            </div>
+            {isCoordination && (
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsEditConfigModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-4.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg shadow-emerald-950/50 border border-emerald-500/50 transition-all cursor-pointer"
+                >
+                  <Settings className="w-4 h-4 text-emerald-200" />
+                  <span>Editar Metas e Parâmetros</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -591,9 +597,12 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
                     {/* 2. Botão de Alternância Direta: Certificado */}
                     <button
                       type="button"
+                      disabled={!isCoordination}
                       onClick={(e) => handleToggleCertificate(member, e)}
-                      title={isCertEmitted ? 'Clique para marcar como Certificado Pendente' : 'Clique para marcar como Certificado Emitido'}
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer select-none active:scale-95 shadow-xs ${
+                      title={isCoordination ? (isCertEmitted ? 'Clique para marcar como Certificado Pendente' : 'Clique para marcar como Certificado Emitido') : 'Status do Certificado'}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all select-none shadow-xs ${
+                        !isCoordination ? 'cursor-default opacity-90' : 'cursor-pointer active:scale-95'
+                      } ${
                         isCertEmitted
                           ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/50 shadow-emerald-950/30'
                           : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-rose-950/30'
@@ -615,9 +624,12 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
                     {/* 3. Botão de Alternância Direta: Crachá / Carteirinha */}
                     <button
                       type="button"
+                      disabled={!isCoordination}
                       onClick={(e) => handleToggleBadge(member, e)}
-                      title={isBadgeCollected ? 'Clique para marcar como Crachá Pendente' : 'Clique para marcar como Crachá Devolvido'}
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer select-none active:scale-95 shadow-xs ${
+                      title={isCoordination ? (isBadgeCollected ? 'Clique para marcar como Crachá Pendente' : 'Clique para marcar como Crachá Devolvido') : 'Status do Crachá'}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all select-none shadow-xs ${
+                        !isCoordination ? 'cursor-default opacity-90' : 'cursor-pointer active:scale-95'
+                      } ${
                         isBadgeCollected
                           ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/50 shadow-emerald-950/30'
                           : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-amber-950/30'
