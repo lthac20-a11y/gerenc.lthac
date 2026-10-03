@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   X, 
   Calendar, 
@@ -23,6 +23,7 @@ import {
   syncMemberReplacementsDeadlines,
   completeReplacementAndDismissAbsence
 } from '../utils/leagueCalculations';
+import { parseMonthKey, formatFullMonthYear } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { QuickReplacementModal, QuickWarningModal } from './CoordinationModals';
 
@@ -59,13 +60,18 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
       const [yearStr, monthStr, dayStr] = parts;
       const monthIdx = Math.max(0, Math.min(11, parseInt(monthStr, 10) - 1));
       const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-      const shortYear = yearStr.slice(-2) || '26';
+      const shortYear = yearStr.slice(-2) || String(new Date().getFullYear()).slice(-2);
       return {
         dayMonth: `${dayStr}/${monthStr}`,
         monthKey: `${monthNames[monthIdx]}/${shortYear}`,
       };
     }
-    return { dayMonth: '03/10', monthKey: 'out/26' };
+    const today = new Date();
+    const dayStr = String(today.getDate()).padStart(2, '0');
+    const monthStr = String(today.getMonth() + 1).padStart(2, '0');
+    const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    const shortYear = String(today.getFullYear()).slice(-2);
+    return { dayMonth: `${dayStr}/${monthStr}`, monthKey: `${monthNames[today.getMonth()]}/${shortYear}` };
   };
 
   const { dayMonth: newShiftDate, monthKey: newShiftMonth } = parseFullDateToShiftParts(newShiftFullDate);
@@ -78,7 +84,10 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
 
   // Edit Shift State
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
-  const [editShiftFullDate, setEditShiftFullDate] = useState('2026-10-02');
+  const [editShiftFullDate, setEditShiftFullDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const [editShiftHours, setEditShiftHours] = useState(12);
 
   // Repositions completion dates states
@@ -110,8 +119,24 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   // Count pending replacements
   const currentPendingReplacements = member.replacements.filter(r => !r.completed).length;
 
+  // Group member shifts by monthKey for organized visual blocks
+  const groupedShifts = useMemo(() => {
+    const groups: { monthKey: string; shifts: ShiftRecord[] }[] = [];
+    member.shifts.forEach(shift => {
+      const key = shift.monthKey || 'out/26';
+      const existingGroup = groups.find(g => g.monthKey === key);
+      if (existingGroup) {
+        existingGroup.shifts.push(shift);
+      } else {
+        groups.push({ monthKey: key, shifts: [shift] });
+      }
+    });
+    return groups;
+  }, [member.shifts]);
+
   const formatShiftDateToIso = (dateStr: string, monthKey?: string): string => {
-    if (!dateStr) return '2026-10-02';
+    const currentFullYear = String(new Date().getFullYear());
+    if (!dateStr) return `${currentFullYear}-01-01`;
     if (dateStr.includes('-') && dateStr.split('-').length === 3) {
       return dateStr;
     }
@@ -121,7 +146,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
         return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       }
       if (parts.length === 2) {
-        let year = '2026';
+        let year = currentFullYear;
         const month = parts[1];
         if (monthKey && monthKey.includes('/')) {
           const shortY = monthKey.split('/')[1];
@@ -130,7 +155,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
         return `${year}-${month.padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       }
     }
-    return '2026-10-02';
+    return `${currentFullYear}-01-01`;
   };
 
   // Handler: Start Editing Shift
@@ -767,160 +792,186 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                   </span>
                 </div>
 
-                {member.shifts.length === 0 ? (
+                {groupedShifts.length === 0 ? (
                   <div className="text-center py-8 border border-dashed border-slate-800 rounded-xl bg-slate-900/40 p-4">
                     <Calendar className="w-7 h-7 text-slate-600 mx-auto mb-1.5" />
                     <p className="text-xs font-semibold text-slate-300">Nenhum plantão individual registrado na lista</p>
                     <p className="text-[11px] text-slate-500 mt-1">Horas totais acumuladas no cadastro: {member.accumulatedHours}h</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-800/80 border-t border-b border-slate-800/80">
-                    {member.shifts.map(shift => {
-                      const isEditing = editingShiftId === shift.id;
-
-                      if (isEditing) {
-                        return (
-                          <form
-                            key={shift.id}
-                            onSubmit={handleSaveEditShift}
-                            className="py-2.5 px-3 bg-slate-800/80 border border-slate-700/80 rounded-xl space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold text-white text-xs flex items-center gap-1.5">
-                                <Pencil className="w-3.5 h-3.5 text-emerald-400" />
-                                Editar Escala / Plantão
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">ID: {shift.id}</span>
-                            </div>
-
-                            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2.5">
-                              <div className="flex-1 min-w-[140px]">
-                                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
-                                  Data do Plantão *
-                                </label>
-                                <input
-                                  type="date"
-                                  value={editShiftFullDate}
-                                  onChange={e => setEditShiftFullDate(e.target.value)}
-                                  required
-                                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none [color-scheme:dark] cursor-pointer"
-                                />
-                              </div>
-
-                              <div className="w-full sm:w-44 shrink-0">
-                                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
-                                  Carga Horária *
-                                </label>
-                                <select
-                                  value={editShiftHours}
-                                  onChange={e => setEditShiftHours(Number(e.target.value))}
-                                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-                                >
-                                  <option value={12}>12 horas (Padrão)</option>
-                                  <option value={6}>6 horas</option>
-                                  <option value={4}>4 horas (Aula/Reunião)</option>
-                                  <option value={24}>24 horas (Duplo)</option>
-                                </select>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0 self-end">
-                                <button
-                                  type="button"
-                                  onClick={handleCancelEditShift}
-                                  className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                                >
-                                  Cancelar
-                                </button>
-                                <button
-                                  type="submit"
-                                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs cursor-pointer flex items-center gap-1 shadow-sm transition-colors"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Salvar</span>
-                                </button>
-                              </div>
-                            </div>
-                          </form>
-                        );
-                      }
+                  <div className="space-y-6 pt-2">
+                    {groupedShifts.map(group => {
+                      const { monthIndex, year } = parseMonthKey(group.monthKey);
+                      const monthLabel = formatFullMonthYear(monthIndex, year);
 
                       return (
-                        <div
-                          key={shift.id}
-                          className="py-1.5 px-2 hover:bg-slate-800/30 flex flex-row items-center justify-between gap-2 transition-colors text-xs"
-                        >
-                          {/* Esquerda + Centro */}
-                          <div className="flex flex-row items-center gap-2 min-w-0 flex-1 overflow-hidden">
-                            {/* 1. Esquerda: Ícone de calendário, data em negrito, mês entre parênteses e barra vertical fina (|) */}
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <Calendar className={`w-3.5 h-3.5 shrink-0 ${
-                                shift.shiftStatus === 'falta_injustificada'
-                                  ? 'text-rose-400'
-                                  : shift.shiftStatus === 'falta_justificada'
-                                  ? 'text-blue-400'
-                                  : 'text-emerald-400'
-                              }`} />
-                              <span className="font-bold text-white font-mono">{shift.date}</span>
-                              <span className="text-slate-400 font-mono text-[11px]">({shift.monthKey})</span>
-                              <span className="text-slate-700 px-1 select-none">|</span>
-                            </div>
-
-                            {/* 2. Centro: Ícone de relógio pequeno, tipo de plantão, ponto (•), carga horária (+12hs) e tag de status */}
-                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                              <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span className="text-slate-300 truncate">
-                                {shift.description || 'Presencial'}
-                              </span>
-                              <span className="text-slate-600 shrink-0">•</span>
-                              <span className="font-bold font-mono text-emerald-400 shrink-0">
-                                +{shift.hours || 12}hs
-                              </span>
-                              {shift.shiftStatus === 'falta_injustificada' ? (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shrink-0 ml-1">
-                                  Falta Não Justif.
-                                </span>
-                              ) : shift.shiftStatus === 'falta_justificada' ? (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 font-semibold border border-blue-500/30 shrink-0 ml-1">
-                                  Falta Justificada
-                                </span>
-                              ) : (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30 shrink-0 ml-1">
-                                  Concluído
-                                </span>
-                              )}
-                            </div>
+                        <div key={group.monthKey} className="space-y-1.5">
+                          {/* Cabeçalho / Separador do Mês */}
+                          <div className="flex items-center gap-2 pb-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 font-mono bg-emerald-950/40 border border-emerald-800/50 px-2.5 py-0.5 rounded-lg flex items-center gap-1.5">
+                              <Calendar className="w-3 h-3 text-emerald-400" />
+                              {monthLabel}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              ({group.shifts.length} {group.shifts.length === 1 ? 'plantão' : 'plantões'})
+                            </span>
+                            <div className="h-px bg-slate-800/80 flex-1 ml-1" />
                           </div>
 
-                          {/* 3. Direita: Botões de ação ("Editar" e "Remover") compactos, lado a lado e alinhados à direita */}
-                          {isCoordination && (
-                            <div className="flex items-center gap-1 shrink-0 ml-2">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleStartEditShift(shift);
-                                }}
-                                className="px-2 py-0.5 text-[11px] text-slate-300 hover:text-emerald-400 bg-slate-800/70 hover:bg-emerald-500/10 border border-slate-700/80 hover:border-emerald-500/30 rounded transition-colors cursor-pointer flex items-center gap-1"
-                                title="Editar esta escala"
-                              >
-                                <Pencil className="w-2.5 h-2.5" />
-                                <span>Editar</span>
-                              </button>
+                          {/* Bloco Único Título-Colado para Plantões do MESMO Mês */}
+                          <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl overflow-hidden divide-y divide-slate-800/60 shadow-sm">
+                            {group.shifts.map(shift => {
+                              const isEditing = editingShiftId === shift.id;
 
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteShift(shift.id);
-                                }}
-                                className="px-2 py-0.5 text-[11px] text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/40 rounded transition-colors cursor-pointer flex items-center gap-1"
-                                title="Remover escala"
-                              >
-                                <Trash2 className="w-2.5 h-2.5" />
-                                <span>Remover</span>
-                              </button>
-                            </div>
-                          )}
+                              if (isEditing) {
+                                return (
+                                  <form
+                                    key={shift.id}
+                                    onSubmit={handleSaveEditShift}
+                                    className="py-2.5 px-3 bg-slate-800/90 border-l-2 border-l-emerald-500 space-y-2"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-semibold text-white text-xs flex items-center gap-1.5">
+                                        <Pencil className="w-3.5 h-3.5 text-emerald-400" />
+                                        Editar Escala / Plantão
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 font-mono">ID: {shift.id}</span>
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2.5">
+                                      <div className="flex-1 min-w-[140px]">
+                                        <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
+                                          Data do Plantão *
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={editShiftFullDate}
+                                          onChange={e => setEditShiftFullDate(e.target.value)}
+                                          required
+                                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none [color-scheme:dark] cursor-pointer"
+                                        />
+                                      </div>
+
+                                      <div className="w-full sm:w-44 shrink-0">
+                                        <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
+                                          Carga Horária *
+                                        </label>
+                                        <select
+                                          value={editShiftHours}
+                                          onChange={e => setEditShiftHours(Number(e.target.value))}
+                                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                                        >
+                                          <option value={12}>12 horas (Padrão)</option>
+                                          <option value={6}>6 horas</option>
+                                          <option value={4}>4 horas (Aula/Reunião)</option>
+                                          <option value={24}>24 horas (Duplo)</option>
+                                        </select>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 shrink-0 self-end">
+                                        <button
+                                          type="button"
+                                          onClick={handleCancelEditShift}
+                                          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                                        >
+                                          Cancelar
+                                        </button>
+                                        <button
+                                          type="submit"
+                                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs cursor-pointer flex items-center gap-1 shadow-sm transition-colors"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                          <span>Salvar</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </form>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  key={shift.id}
+                                  className="py-1.5 px-3 hover:bg-slate-800/40 flex flex-row items-center justify-between gap-2 transition-colors text-xs"
+                                >
+                                  {/* Esquerda + Centro */}
+                                  <div className="flex flex-row items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                                    {/* 1. Esquerda: Ícone de calendário, data em negrito, mês entre parênteses e barra vertical fina (|) */}
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <Calendar className={`w-3.5 h-3.5 shrink-0 ${
+                                        shift.shiftStatus === 'falta_injustificada'
+                                          ? 'text-rose-400'
+                                          : shift.shiftStatus === 'falta_justificada'
+                                          ? 'text-blue-400'
+                                          : 'text-emerald-400'
+                                      }`} />
+                                      <span className="font-bold text-white font-mono">{shift.date}</span>
+                                      <span className="text-slate-400 font-mono text-[11px]">({shift.monthKey})</span>
+                                      <span className="text-slate-700 px-1 select-none">|</span>
+                                    </div>
+
+                                    {/* 2. Centro: Ícone de relógio pequeno, tipo de plantão, ponto (•), carga horária (+12hs) e tag de status */}
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                      <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                                      <span className="text-slate-300 truncate">
+                                        {shift.shiftStatus === 'falta_injustificada' || shift.shiftStatus === 'falta_justificada'
+                                          ? shift.description
+                                          : 'Plantão Concluído'}
+                                      </span>
+                                      <span className="text-slate-600 shrink-0">•</span>
+                                      <span className="font-bold font-mono text-emerald-400 shrink-0">
+                                        +{shift.hours || 12}hs
+                                      </span>
+                                      {shift.shiftStatus === 'falta_injustificada' ? (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shrink-0 ml-1">
+                                          [Falta Não Justif.]
+                                        </span>
+                                      ) : shift.shiftStatus === 'falta_justificada' ? (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 font-semibold border border-blue-500/30 shrink-0 ml-1">
+                                          [Falta Justificada]
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30 shrink-0 ml-1">
+                                          [Concluído]
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* 3. Direita: Botões de ação ("Editar" e "Remover") compactos */}
+                                  {isCoordination && (
+                                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleStartEditShift(shift);
+                                        }}
+                                        className="px-2 py-0.5 text-[11px] text-slate-300 hover:text-emerald-400 bg-slate-800/70 hover:bg-emerald-500/10 border border-slate-700/80 hover:border-emerald-500/30 rounded transition-colors cursor-pointer flex items-center gap-1"
+                                        title="Editar esta escala"
+                                      >
+                                        <Pencil className="w-2.5 h-2.5" />
+                                        <span>Editar</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteShift(shift.id);
+                                        }}
+                                        className="px-2 py-0.5 text-[11px] text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/40 rounded transition-colors cursor-pointer flex items-center gap-1"
+                                        title="Remover escala"
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" />
+                                        <span>Remover</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}

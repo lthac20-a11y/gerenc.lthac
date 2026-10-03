@@ -21,6 +21,7 @@ import {
   syncMemberReplacementsDeadlines,
   completeReplacementAndDismissAbsence
 } from '../utils/leagueCalculations';
+import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { QuickReplacementModal } from './CoordinationModals';
 
@@ -60,12 +61,16 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
     setExpandedMembers({});
   };
 
+  const currentYear = getCurrentYear();
+  const currentMonthIdx = getCurrentMonthIndex();
+  const defaultOriginMonth = formatMonthKey(currentMonthIdx, currentYear);
+
   // New Replacement Form Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState(members[0]?.id || '');
-  const [originMonth, setOriginMonth] = useState('out/26');
+  const [originMonth, setOriginMonth] = useState(defaultOriginMonth);
   const [scheduledHours, setScheduledHours] = useState(12);
-  const [notes, setNotes] = useState('Referente à falta não justificada de 02/10/2026');
+  const [notes, setNotes] = useState(`Referente à falta de ${new Date().toLocaleDateString('pt-BR')}`);
   const [isCompletedAlready, setIsCompletedAlready] = useState(false);
   const [completedDateInput, setCompletedDateInput] = useState(new Date().toLocaleDateString('pt-BR'));
 
@@ -697,7 +702,11 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                   onChange={e => setOriginMonth(e.target.value)}
                   className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono"
                 >
-                  {['jan/26', 'fev/26', 'mar/26', 'abr/26', 'mai/26', 'jun/26', 'jul/26', 'ago/26', 'set/26', 'out/26', 'nov/26', 'dez/26'].map(m => (
+                  {[
+                    ...getMonthColumnsForYear(currentYear - 1),
+                    ...getMonthColumnsForYear(currentYear),
+                    ...getMonthColumnsForYear(currentYear + 1),
+                  ].map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
