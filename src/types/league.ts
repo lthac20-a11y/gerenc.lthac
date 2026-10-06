@@ -35,6 +35,7 @@ export interface ReplacementRecord {
   memberId: string;
   absenceId?: string;
   shiftId?: string;
+  faltaOrigemId?: string; // ID da falta de origem para vínculo estrito 1:1
   scheduledDate?: string; // e.g. "xx/10" or "18/10/2026"
   scheduledHours: number;
   completed: boolean;
@@ -44,6 +45,8 @@ export interface ReplacementRecord {
   missedShiftDate?: string;
   warningIssuedForDelay?: boolean;
   notes?: string;
+  originalAbsenceCountInMonth?: number; // Total de faltas originais no mês de origem (1 ou 2)
+  fixedDeadlineMonthKey?: string; // Mês limite fixo (ex: 'dez/26')
 }
 
 export interface WarningRecord {

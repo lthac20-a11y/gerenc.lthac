@@ -159,7 +159,10 @@ export const INITIAL_MEMBERS: Member[] = [
         scheduledDate: 'xx/10',
         scheduledHours: 12,
         completed: false,
-        notes: 'Referente à falta não justificada de 02/10/2026',
+        deadlineMonth: 'set/26',
+        originalAbsenceCountInMonth: 2,
+        fixedDeadlineMonthKey: 'nov/26',
+        notes: 'Referente à falta não justificada de 15/09/2026',
       },
       {
         id: 'rep-r2',
@@ -167,7 +170,10 @@ export const INITIAL_MEMBERS: Member[] = [
         scheduledDate: 'xx/11',
         scheduledHours: 12,
         completed: false,
-        notes: 'Referente à falta não justificada de 02/10/2026',
+        deadlineMonth: 'set/26',
+        originalAbsenceCountInMonth: 2,
+        fixedDeadlineMonthKey: 'nov/26',
+        notes: 'Referente à falta não justificada de 22/09/2026',
       }
     ],
     shifts: [
@@ -244,8 +250,8 @@ export const INITIAL_MEMBERS: Member[] = [
       { id: 'ab-t2', date: '19/09/2026', type: 'injustificada', reason: 'Falta sem justificativa', requiresReplacement: true, warningId: 'w-ab-t2' },
     ],
     replacements: [
-      { id: 'rep-t1', memberId: 'm-4', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
-      { id: 'rep-t2', memberId: 'm-4', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
+      { id: 'rep-t1', memberId: 'm-4', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, deadlineMonth: 'set/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'nov/26', notes: 'Referente à falta não justificada de 05/09/2026' },
+      { id: 'rep-t2', memberId: 'm-4', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, deadlineMonth: 'set/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'nov/26', notes: 'Referente à falta não justificada de 19/09/2026' },
     ],
     shifts: [
       { id: 's-4-1', date: '18/04', monthKey: 'abr/26', hours: 12, type: 'plantao' },
@@ -296,8 +302,8 @@ export const INITIAL_MEMBERS: Member[] = [
       { id: 'ab-a2', date: '28/08/2026', type: 'injustificada', reason: 'Falta não justificada', requiresReplacement: true, warningId: 'w-ab-a2' },
     ],
     replacements: [
-      { id: 'rep-a1', memberId: 'm-6', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
-      { id: 'rep-a2', memberId: 'm-6', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
+      { id: 'rep-a1', memberId: 'm-6', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, deadlineMonth: 'ago/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'out/26', notes: 'Referente à falta não justificada de 15/08/2026' },
+      { id: 'rep-a2', memberId: 'm-6', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, deadlineMonth: 'ago/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'out/26', notes: 'Referente à falta não justificada de 28/08/2026' },
     ],
     shifts: [
       { id: 's-6-1', date: '17/08', monthKey: 'ago/26', hours: 12, type: 'plantao' },
@@ -322,8 +328,8 @@ export const INITIAL_MEMBERS: Member[] = [
       { id: 'ab-i2', date: '15/08/2026', type: 'injustificada', reason: 'Falta sem justificativa prévia', requiresReplacement: true, warningId: 'w-ab-i2' },
     ],
     replacements: [
-      { id: 'rep-i1', memberId: 'm-7', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
-      { id: 'rep-i2', memberId: 'm-7', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
+      { id: 'rep-i1', memberId: 'm-7', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, deadlineMonth: 'ago/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'out/26', notes: 'Referente à falta não justificada de 01/08/2026' },
+      { id: 'rep-i2', memberId: 'm-7', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, deadlineMonth: 'ago/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'out/26', notes: 'Referente à falta não justificada de 15/08/2026' },
     ],
     shifts: [
       { id: 's-7-1', date: '19/08', monthKey: 'ago/26', hours: 12, type: 'plantao' },
@@ -348,8 +354,8 @@ export const INITIAL_MEMBERS: Member[] = [
       { id: 'ab-ls2', date: '24/08/2026', type: 'injustificada', reason: 'Falta de plantão', requiresReplacement: true, warningId: 'w-ab-ls2' },
     ],
     replacements: [
-      { id: 'rep-ls1', memberId: 'm-8', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
-      { id: 'rep-ls2', memberId: 'm-8', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, notes: 'Referente à falta não justificada de 02/10/2026' },
+      { id: 'rep-ls1', memberId: 'm-8', scheduledDate: 'xx/10', scheduledHours: 12, completed: false, deadlineMonth: 'ago/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'out/26', notes: 'Referente à falta não justificada de 12/08/2026' },
+      { id: 'rep-ls2', memberId: 'm-8', scheduledDate: 'xx/11', scheduledHours: 12, completed: false, deadlineMonth: 'ago/26', originalAbsenceCountInMonth: 2, fixedDeadlineMonthKey: 'out/26', notes: 'Referente à falta não justificada de 24/08/2026' },
     ],
     shifts: [
       { id: 's-8-1', date: '08/08', monthKey: 'ago/26', hours: 12, type: 'plantao' },

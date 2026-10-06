@@ -41,6 +41,51 @@ export function formatFullMonthYear(monthIndex: number, year: number): string {
 }
 
 /**
+ * Formata uma chave de mês ou string de data para o formato limpo 'Outubro/2026'
+ * (ex: 'out/26', '10/2026', '05/10 (out/26)' -> 'Outubro/2026')
+ */
+export function formatReferenceMonthYear(monthOrDateStr?: string, fallbackMonthKey?: string): string {
+  const raw = (monthOrDateStr || fallbackMonthKey || '').trim();
+  if (!raw) {
+    return `${FULL_MONTH_NAMES[getCurrentMonthIndex()]}/${getCurrentYear()}`;
+  }
+
+  // Se já estiver no formato 'Outubro/2026'
+  for (let i = 0; i < FULL_MONTH_NAMES.length; i++) {
+    if (raw.toLowerCase().startsWith(FULL_MONTH_NAMES[i].toLowerCase())) {
+      const yearMatch = raw.match(/\d{4}/);
+      const yr = yearMatch ? parseInt(yearMatch[0], 10) : getCurrentYear();
+      return `${FULL_MONTH_NAMES[i]}/${yr}`;
+    }
+  }
+
+  // Se tiver '(out/26)' embutido (ex: '05/10 (out/26)')
+  const parenMatch = raw.match(/\(([^)]+)\)/);
+  if (parenMatch && parenMatch[1]) {
+    const { monthIndex, year } = parseMonthKey(parenMatch[1]);
+    return `${FULL_MONTH_NAMES[(monthIndex + 12) % 12]}/${year}`;
+  }
+
+  // Se houver fallbackMonthKey válido (ex: 'out/26'), priorizar caso raw seja 'DD/MM'
+  if (fallbackMonthKey && fallbackMonthKey.includes('/')) {
+    const { monthIndex, year } = parseMonthKey(fallbackMonthKey);
+    return `${FULL_MONTH_NAMES[(monthIndex + 12) % 12]}/${year}`;
+  }
+
+  const { monthIndex, year } = parseMonthKey(raw);
+  return `${FULL_MONTH_NAMES[(monthIndex + 12) % 12]}/${year}`;
+}
+
+/**
+ * Formata uma chave de mês para o formato numérico 'MM/YYYY' (ex: 'out/26' -> '10/2026')
+ */
+export function formatNumericMonthYear(monthKey: string): string {
+  const { monthIndex, year } = parseMonthKey(monthKey);
+  const mm = String(((monthIndex + 12) % 12) + 1).padStart(2, '0');
+  return `${mm}/${year}`;
+}
+
+/**
  * Converte chave de mês (ex: 'out/26' ou '02/2026') em mês (0..11) e ano completo (ex: 2026)
  */
 export function parseMonthKey(monthKey: string): { monthIndex: number; year: number } {
@@ -132,13 +177,19 @@ export function isDeadlineOverdue(deadlineMonthKey: string): boolean {
 /**
  * Retorna o texto formatado do prazo limite e flag de vencimento para os cards de reposição
  */
-export function getReplacementDeadlineInfo(originMonthKey: string, absencesInSameMonth: number = 1): {
+export function getReplacementDeadlineInfo(
+  originMonthKey: string, 
+  absencesInSameMonth: number = 1,
+  fixedDeadlineMonthKey?: string
+): {
   deadlineMonthKey: string;
   deadlineText: string;
   isOverdue: boolean;
 } {
   const monthsToAdd = absencesInSameMonth >= 2 ? 2 : 1;
-  const deadlineMonthKey = getDeadlineMonthKey(originMonthKey || 'out/26', monthsToAdd);
+  const deadlineMonthKey = (fixedDeadlineMonthKey && fixedDeadlineMonthKey.trim()) 
+    ? fixedDeadlineMonthKey.trim() 
+    : getDeadlineMonthKey(originMonthKey || 'out/26', monthsToAdd);
   const isOverdue = isDeadlineOverdue(deadlineMonthKey);
   const deadlineText = `⏳ Prazo Limite: até final de ${deadlineMonthKey}`;
 

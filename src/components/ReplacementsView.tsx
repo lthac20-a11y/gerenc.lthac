@@ -20,11 +20,13 @@ import { Member, ReplacementRecord } from '../types/league';
 import { 
   calculateReplacementDeadline, 
   syncMemberReplacementsDeadlines,
-  completeReplacementAndDismissAbsence
+  completeReplacementAndDismissAbsence,
+  deleteReplacementWithCascade
 } from '../utils/leagueCalculations';
-import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, getReplacementDeadlineInfo } from '../utils/dateUtils';
+import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, getReplacementDeadlineInfo, formatReferenceMonthYear } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { QuickReplacementModal } from './CoordinationModals';
+import { CustomDatePicker } from './CustomDatePicker';
 
 interface ReplacementsViewProps {
   members: Member[];
@@ -192,28 +194,21 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
     showFeedback(`Advertência disciplinar aplicada a ${targetMember.name} por não reposição no prazo!`);
   };
 
-  // Handler: Delete replacement
+  // Handler: Delete replacement (Eliminação Bidirecional com Histórico de Escalas e Contadores)
   const handleDeleteReplacement = (memberId: string, repId: string) => {
     const targetMember = members.find(m => m.id === memberId);
     if (!targetMember) return;
 
-    const rep = targetMember.replacements.find(r => r.id === repId);
-    const hoursToDeduct = (rep && rep.completed) ? (rep.scheduledHours || 12) : 0;
+    const { updatedMember, wasFNJ, wasFJ } = deleteReplacementWithCascade(targetMember, repId);
+    onUpdateMember(updatedMember);
 
-    const updatedReplacements = syncMemberReplacementsDeadlines(
-      targetMember.replacements.filter(r => r.id !== repId)
-    );
-
-    const updatedJustified = targetMember.justifiedAbsences.filter(a => a.replacementId !== repId && a.id !== rep?.absenceId);
-    const updatedUnjustified = targetMember.unjustifiedAbsences.filter(a => a.replacementId !== repId && a.id !== rep?.absenceId);
-
-    onUpdateMember({
-      ...targetMember,
-      replacements: updatedReplacements,
-      justifiedAbsences: updatedJustified,
-      unjustifiedAbsences: updatedUnjustified,
-      accumulatedHours: Math.max(0, targetMember.accumulatedHours - hoursToDeduct),
-    });
+    if (wasFNJ) {
+      showFeedback(`Reposição eliminada de ${targetMember.name}: registo no histórico removido, -1 REP, -1 FNJ e -1 Advertência.`);
+    } else if (wasFJ) {
+      showFeedback(`Reposição eliminada de ${targetMember.name}: registo no histórico removido, -1 REP e -1 FJ.`);
+    } else {
+      showFeedback(`Reposição removida de ${targetMember.name} com sucesso!`);
+    }
   };
 
   // Handler: Add new replacement
@@ -441,8 +436,23 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                     ) : (
                       replacements.map(rep => {
                         const originMonth = rep.deadlineMonth || 'out/26';
-                        const absencesInSameMonth = member.replacements.filter(r => (r.deadlineMonth || 'out/26') === originMonth).length;
-                        const { deadlineText, isOverdue } = getReplacementDeadlineInfo(originMonth, absencesInSameMonth);
+                        const totalJustifiedInMonth = member.justifiedAbsences.filter(a => (a.monthKey || 'out/26') === originMonth).length;
+                        const totalUnjustifiedInMonth = member.unjustifiedAbsences.filter(a => (a.monthKey || 'out/26') === originMonth).length;
+                        const totalShiftsAbsencesInMonth = member.shifts.filter(s => (s.monthKey || 'out/26') === originMonth && (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada' || s.description?.includes('Falta'))).length;
+                        const totalReplacementsInMonth = member.replacements.filter(r => (r.deadlineMonth || 'out/26') === originMonth).length;
+
+                        const absencesInSameMonth = Math.max(
+                          rep.originalAbsenceCountInMonth || 1,
+                          totalJustifiedInMonth + totalUnjustifiedInMonth,
+                          totalShiftsAbsencesInMonth,
+                          totalReplacementsInMonth
+                        );
+
+                        const { deadlineText, isOverdue } = getReplacementDeadlineInfo(
+                          originMonth, 
+                          absencesInSameMonth, 
+                          rep.fixedDeadlineMonthKey
+                        );
 
                         return (
                           <div
@@ -480,15 +490,16 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                                   {rep.scheduledHours || 12} horas
                                 </span>
 
-                                {rep.missedShiftDate && (
-                                  <span className="flex items-center gap-1 text-slate-300 text-xs font-mono">
-                                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                                    Falta de Origem: {rep.missedShiftDate}
-                                  </span>
-                                )}
+                                <span className="flex items-center gap-1 text-slate-300 text-xs font-mono">
+                                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                  Mês de Referência: <strong>{formatReferenceMonthYear(rep.missedShiftDate, rep.deadlineMonth || 'out/26')}</strong>
+                                </span>
                               </div>
 
-                              {rep.notes && !rep.notes.toLowerCase().includes('falta referente ao mês') && (
+                              {rep.notes &&
+                                !rep.notes.toLowerCase().includes('falta referente ao mês') &&
+                                !rep.notes.toLowerCase().includes('falta justificada') &&
+                                !rep.notes.toLowerCase().includes('falta não justificada') && (
                                 <p className="text-xs text-slate-300">
                                   {rep.notes}
                                 </p>
@@ -566,16 +577,15 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                             <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end md:self-center">
                               {!rep.completed ? (
                                 <>
-                                  <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 rounded-lg px-2.5 py-1">
-                                    <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                    <span className="text-[11px] text-slate-300 whitespace-nowrap">Data feita:</span>
-                                    <input
-                                      type="text"
-                                      placeholder="DD/MM/AAAA"
-                                      value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
-                                      onChange={e => setCompletionDates(prev => ({ ...prev, [rep.id]: e.target.value }))}
-                                      className="px-1 py-0.5 bg-transparent text-white font-mono text-xs w-24 focus:outline-none"
-                                    />
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] text-slate-300 whitespace-nowrap font-medium">Data feita:</span>
+                                    <div className="w-36">
+                                      <CustomDatePicker
+                                        value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
+                                        onChange={val => setCompletionDates(prev => ({ ...prev, [rep.id]: val }))}
+                                        format="BR"
+                                      />
+                                    </div>
                                   </div>
 
                                   <div className="flex items-center gap-2">

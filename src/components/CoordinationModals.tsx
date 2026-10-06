@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Member, ReplacementRecord, WarningRecord, MONTH_COLUMNS } from '../types/league';
+import { CustomDatePicker } from './CustomDatePicker';
 import { 
   calculateReplacementDeadline, 
   syncMemberReplacementsDeadlines,
@@ -357,16 +358,12 @@ export const QuickReplacementModal: React.FC<QuickReplacementModalProps> = ({
 
             {isCompleted && (
               <div>
-                <label className="text-slate-300 uppercase font-semibold text-[10px] block mb-1">
-                  Data em que foi realizada *
-                </label>
-                <input
-                  type="text"
-                  placeholder="DD/MM/AAAA"
-                  value={completedDate}
-                  onChange={e => setCompletedDate(e.target.value)}
+                <CustomDatePicker
+                  label="Data em que foi realizada"
                   required={isCompleted}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono"
+                  value={completedDate}
+                  onChange={val => setCompletedDate(val)}
+                  format="BR"
                 />
                 <p className="text-[10px] text-emerald-400 mt-1 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" />
@@ -515,16 +512,12 @@ export const QuickWarningModal: React.FC<QuickWarningModalProps> = ({
           </div>
 
           <div>
-            <label className="text-slate-300 uppercase font-semibold block text-[10px] mb-1">
-              Data da Ocorrência *
-            </label>
-            <input
-              type="text"
+            <CustomDatePicker
+              label="Data da Ocorrência"
               required
-              placeholder="DD/MM/AAAA"
               value={date}
-              onChange={e => setDate(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono"
+              onChange={val => setDate(val)}
+              format="BR"
             />
           </div>
 

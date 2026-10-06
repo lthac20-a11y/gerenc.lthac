@@ -43,6 +43,7 @@ import {
   syncMemberReplacementsDeadlines
 } from '../utils/leagueCalculations';
 import { useAuth } from '../context/AuthContext';
+import { CustomDatePicker } from './CustomDatePicker';
 
 interface MonthlyScheduleViewProps {
   members: Member[];
@@ -1068,14 +1069,29 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
             <form onSubmit={handleSaveDirectShift} className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Data / Dia *</label>
-                  <input
-                    type="text"
-                    value={directAddModal.date}
-                    onChange={e => setDirectAddModal(prev => ({ ...prev, date: e.target.value }))}
-                    placeholder="Ex: 02/10"
+                  <CustomDatePicker
+                    label="Data do Plantão"
                     required
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs"
+                    value={directAddModal.date}
+                    onChange={val => {
+                      const parts = val.includes('-') ? val.split('-') : val.split('/');
+                      if (parts.length === 3) {
+                        if (val.includes('-')) {
+                          const [y, m, d] = parts;
+                          const mIdx = parseInt(m, 10) - 1;
+                          const monthKey = formatMonthKey(mIdx, parseInt(y, 10));
+                          setDirectAddModal(prev => ({ ...prev, date: `${d}/${m}`, monthKey }));
+                        } else {
+                          const [d, m, y] = parts;
+                          const mIdx = parseInt(m, 10) - 1;
+                          const monthKey = formatMonthKey(mIdx, parseInt(y, 10));
+                          setDirectAddModal(prev => ({ ...prev, date: `${d}/${m}`, monthKey }));
+                        }
+                      } else {
+                        setDirectAddModal(prev => ({ ...prev, date: val }));
+                      }
+                    }}
+                    format="BR"
                   />
                 </div>
 

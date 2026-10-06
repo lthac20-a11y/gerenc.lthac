@@ -17,6 +17,7 @@ import { useAuth } from './context/AuthContext';
 import { Member, LeagueConfig, ShiftRecord, RoleInLeague, ReplacementRecord, WarningRecord } from './types/league';
 import { INITIAL_MEMBERS, DEFAULT_LEAGUE_CONFIG } from './data/initialData';
 import { calculateLeagueStats, calculateReplacementDeadline, syncMemberReplacementsDeadlines } from './utils/leagueCalculations';
+import { formatReferenceMonthYear, formatNumericMonthYear } from './utils/dateUtils';
 import { ShiftBatchSubmission } from './components/AddShiftModal';
 
 // Firebase Firestore Imports
@@ -385,8 +386,9 @@ export default function App() {
     const m = members.find(x => x.id === memberId);
     if (!m) return;
 
-    const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const monthKey = 'out/26';
+    const numericMonthRef = formatNumericMonthYear(monthKey);
+    const fullMonthRef = formatReferenceMonthYear(monthKey, monthKey);
     const absenceId = `ab-fj-${Date.now()}`;
     const replacementId = `rep-${Date.now()}`;
 
@@ -396,10 +398,10 @@ export default function App() {
 
     const newAbsence = {
       id: absenceId,
-      date: today,
+      date: numericMonthRef,
       monthKey,
       type: 'justificada' as const,
-      reason: `Falta justificada no plantão de ${today} (${monthKey})`,
+      reason: `Falta justificada — Mês de Referência: ${fullMonthRef}`,
       hasMedicalCertificate: true,
       requiresReplacement: true,
       replacementId,
@@ -409,13 +411,14 @@ export default function App() {
       id: replacementId,
       memberId: m.id,
       absenceId,
+      faltaOrigemId: absenceId,
       scheduledDate: 'A definir',
       scheduledHours: 12,
       completed: false,
       deadlineMonth: monthKey,
       deadlineDescription: deadlineText,
-      missedShiftDate: `${today} (${monthKey})`,
-      notes: `Falta Justificada em ${today} (${monthKey}) — sem advertência, requer reposição. Prazo: ${deadlineText}`,
+      missedShiftDate: fullMonthRef,
+      notes: `Falta Justificada — Mês de Referência: ${fullMonthRef} (sem advertência, requer reposição). Prazo: ${deadlineText}`,
     };
 
     const updated: Member = {
@@ -432,8 +435,9 @@ export default function App() {
     const m = members.find(x => x.id === memberId);
     if (!m) return;
 
-    const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const monthKey = 'out/26';
+    const numericMonthRef = formatNumericMonthYear(monthKey);
+    const fullMonthRef = formatReferenceMonthYear(monthKey, monthKey);
     const absenceId = `ab-fnj-${Date.now()}`;
     const replacementId = `rep-${Date.now()}`;
     const warningId = `w-${Date.now()}`;
@@ -444,18 +448,18 @@ export default function App() {
 
     const newWarning: WarningRecord = {
       id: warningId,
-      date: today,
-      reason: `Advertência automática por falta não justificada no plantão de ${today} (${monthKey})`,
+      date: numericMonthRef,
+      reason: `Advertência automática por falta não justificada — Mês de Referência: ${fullMonthRef}`,
       severity: 'moderada',
       active: true,
     };
 
     const newAbsence = {
       id: absenceId,
-      date: today,
+      date: numericMonthRef,
       monthKey,
       type: 'injustificada' as const,
-      reason: `Falta não justificada no plantão de ${today} (${monthKey})`,
+      reason: `Falta não justificada — Mês de Referência: ${fullMonthRef}`,
       requiresReplacement: true,
       replacementId,
       warningId,
@@ -465,13 +469,14 @@ export default function App() {
       id: replacementId,
       memberId: m.id,
       absenceId,
+      faltaOrigemId: absenceId,
       scheduledDate: 'A definir',
       scheduledHours: 12,
       completed: false,
       deadlineMonth: monthKey,
       deadlineDescription: deadlineText,
-      missedShiftDate: `${today} (${monthKey})`,
-      notes: `Falta Não Justificada em ${today} (${monthKey}) — gerou 1 ADV e requer reposição. Prazo: ${deadlineText}`,
+      missedShiftDate: fullMonthRef,
+      notes: `Falta Não Justificada — Mês de Referência: ${fullMonthRef} (gerou 1 ADV e requer reposição). Prazo: ${deadlineText}`,
     };
 
     const updated: Member = {
@@ -550,20 +555,26 @@ export default function App() {
       baseShift.absenceId = absenceId;
       baseShift.replacementId = replacementId;
 
+      const fullMonthRef = formatReferenceMonthYear(shiftData.monthKey, shiftData.monthKey);
+      const numericMonthRef = formatNumericMonthYear(shiftData.monthKey);
+      baseShift.date = numericMonthRef;
+
       const newRep: ReplacementRecord = {
         id: replacementId,
         memberId: m.id,
         absenceId,
         shiftId,
+        faltaOrigemId: absenceId,
         scheduledDate: 'A definir',
         scheduledHours: shiftData.hours || 12,
         completed: false,
         deadlineMonth: shiftData.monthKey,
         deadlineDescription: deadlineText,
-        missedShiftDate: `${shiftData.date} (${shiftData.monthKey})`,
+        missedShiftDate: fullMonthRef,
         notes: shiftData.shiftStatus === 'falta_justificada'
-          ? `Falta Justificada. Prazo: ${deadlineText}`
-          : `Falta Não Justificada. Prazo: ${deadlineText}. Gerou 1 ADV`,
+          ? `Falta Justificada — Mês de Referência: ${fullMonthRef}. Prazo: ${deadlineText}`
+          : `Falta Não Justificada — Mês de Referência: ${fullMonthRef}. Prazo: ${deadlineText}. Gerou 1 ADV`,
+        originalAbsenceCountInMonth: countInMonth >= 2 ? 2 : 1,
       };
 
       const updatedReplacements = syncMemberReplacementsDeadlines([newRep, ...m.replacements]);
@@ -571,10 +582,10 @@ export default function App() {
       if (shiftData.shiftStatus === 'falta_justificada') {
         const newAbsence: typeof m.justifiedAbsences[0] = {
           id: absenceId,
-          date: shiftData.date,
+          date: numericMonthRef,
           monthKey: shiftData.monthKey,
           type: 'justificada',
-          reason: `Falta justificada no plantão de ${shiftData.date} (${shiftData.monthKey})`,
+          reason: `Falta justificada — Mês de Referência: ${fullMonthRef}`,
           requiresReplacement: true,
           shiftId,
           replacementId,
@@ -591,8 +602,8 @@ export default function App() {
       } else {
         const newWarning: WarningRecord = {
           id: warningId,
-          date: shiftData.date,
-          reason: `Advertência por falta não justificada no plantão de ${shiftData.date} (${shiftData.monthKey})`,
+          date: numericMonthRef,
+          reason: `Advertência por falta não justificada — Mês de Referência: ${fullMonthRef}`,
           severity: 'moderada',
           active: true,
         };

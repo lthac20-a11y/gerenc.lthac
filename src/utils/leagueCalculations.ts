@@ -187,7 +187,66 @@ export function calculateLeagueStats(members: Member[], config: LeagueConfig) {
   };
 }
 
-import { calculateDynamicReplacementDeadline } from './dateUtils';
+import { calculateDynamicReplacementDeadline, getDeadlineMonthKey, formatMonthKey, parseMonthKey } from './dateUtils';
+
+/**
+ * Helper to parse a date string ('DD/MM/YYYY', 'YYYY-MM-DD', or 'DD/MM')
+ * into shift record parts ({ dayMonth: 'DD/MM', monthKey: 'mmm/yy' })
+ */
+export function parseDateToShiftParts(
+  dateStr: string,
+  fallbackMonthKey: string = 'out/26'
+): { dayMonth: string; monthKey: string } {
+  const clean = (dateStr || '').trim();
+  if (!clean) {
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return {
+      dayMonth: `${d}/${m}`,
+      monthKey: formatMonthKey(now.getMonth(), now.getFullYear()),
+    };
+  }
+
+  if (clean.includes('-')) {
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      const yearNum = parseInt(parts[0], 10) || new Date().getFullYear();
+      const monthNum = parseInt(parts[1], 10) || 1;
+      const dayStr = parts[2].padStart(2, '0');
+      const monthStr = String(monthNum).padStart(2, '0');
+      const mIdx = Math.max(0, Math.min(11, monthNum - 1));
+      return {
+        dayMonth: `${dayStr}/${monthStr}`,
+        monthKey: formatMonthKey(mIdx, yearNum),
+      };
+    }
+  }
+
+  if (clean.includes('/')) {
+    const parts = clean.split('/');
+    if (parts.length >= 2) {
+      const dayStr = parts[0].trim().padStart(2, '0');
+      const monthNum = parseInt(parts[1].trim(), 10) || 1;
+      const monthStr = String(monthNum).padStart(2, '0');
+      const mIdx = Math.max(0, Math.min(11, monthNum - 1));
+      let yearNum = parseMonthKey(fallbackMonthKey).year;
+      if (parts.length >= 3 && parts[2].trim()) {
+        const rawY = parts[2].trim();
+        yearNum = rawY.length === 2 ? 2000 + parseInt(rawY, 10) : parseInt(rawY, 10);
+      }
+      return {
+        dayMonth: `${dayStr}/${monthStr}`,
+        monthKey: formatMonthKey(mIdx, yearNum),
+      };
+    }
+  }
+
+  return {
+    dayMonth: clean,
+    monthKey: fallbackMonthKey,
+  };
+}
 
 /**
  * Calculates regimental replacement deadline:
@@ -200,31 +259,98 @@ export function calculateReplacementDeadline(currentMonthKey: string, absencesIn
 
 /**
  * Re-synchronizes replacement deadline descriptions for all replacements of a member
- * based on how many absences/replacements exist in each monthKey.
+ * based on how many original absences/replacements exist in each monthKey.
  * Tendo duas faltas de plantões no mesmo mês, o acadêmico terá os próximos 2 meses para repor esses dois plantões.
+ * O prazo de 2 meses é mantido permanentemente mesmo que uma das reposições seja cumprida ou removida.
  */
-export function syncMemberReplacementsDeadlines(replacements: import('../types/league').ReplacementRecord[]): import('../types/league').ReplacementRecord[] {
-  // Count how many replacements share the same deadlineMonth
-  const countByMonth = new Map<string, number>();
+export function syncMemberReplacementsDeadlines(
+  replacements: import('../types/league').ReplacementRecord[],
+  member?: import('../types/league').Member
+): import('../types/league').ReplacementRecord[] {
+  const maxCountByMonth = new Map<string, number>();
+
+  // Pass 1: Collect stored originalAbsenceCountInMonth from existing records
   replacements.forEach(rep => {
     const m = rep.deadlineMonth || 'out/26';
-    countByMonth.set(m, (countByMonth.get(m) || 0) + 1);
+    const storedCount = rep.originalAbsenceCountInMonth || 1;
+    const currentMax = maxCountByMonth.get(m) || 0;
+    maxCountByMonth.set(m, Math.max(currentMax, storedCount));
   });
+
+  // Pass 2: Check total replacement records registered for each month
+  const repCountByMonth = new Map<string, number>();
+  replacements.forEach(rep => {
+    const m = rep.deadlineMonth || 'out/26';
+    repCountByMonth.set(m, (repCountByMonth.get(m) || 0) + 1);
+  });
+
+  repCountByMonth.forEach((count, m) => {
+    const currentMax = maxCountByMonth.get(m) || 1;
+    if (count >= 2) {
+      maxCountByMonth.set(m, Math.max(currentMax, count));
+    }
+  });
+
+  // Pass 3: Inspect member's historical absences and shift records if provided
+  if (member) {
+    const justifiedCountByMonth = new Map<string, number>();
+    member.justifiedAbsences.forEach(a => {
+      const m = a.monthKey || 'out/26';
+      justifiedCountByMonth.set(m, (justifiedCountByMonth.get(m) || 0) + 1);
+    });
+
+    const unjustifiedCountByMonth = new Map<string, number>();
+    member.unjustifiedAbsences.forEach(a => {
+      const m = a.monthKey || 'out/26';
+      unjustifiedCountByMonth.set(m, (unjustifiedCountByMonth.get(m) || 0) + 1);
+    });
+
+    const shiftAbsencesByMonth = new Map<string, number>();
+    member.shifts.forEach(s => {
+      if (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada' || s.description?.includes('Falta')) {
+        const m = s.monthKey || 'out/26';
+        shiftAbsencesByMonth.set(m, (shiftAbsencesByMonth.get(m) || 0) + 1);
+      }
+    });
+
+    const allMonths = new Set([
+      ...Array.from(maxCountByMonth.keys()),
+      ...Array.from(justifiedCountByMonth.keys()),
+      ...Array.from(unjustifiedCountByMonth.keys()),
+      ...Array.from(shiftAbsencesByMonth.keys()),
+    ]);
+
+    allMonths.forEach(m => {
+      const curMax = maxCountByMonth.get(m) || 1;
+      const totalAbsencesInMember = (justifiedCountByMonth.get(m) || 0) + (unjustifiedCountByMonth.get(m) || 0);
+      const totalShiftAbsences = shiftAbsencesByMonth.get(m) || 0;
+      maxCountByMonth.set(m, Math.max(curMax, totalAbsencesInMember, totalShiftAbsences));
+    });
+  }
 
   return replacements.map(rep => {
     const m = rep.deadlineMonth || 'out/26';
-    const count = countByMonth.get(m) || 1;
-    const deadlineDescription = calculateReplacementDeadline(m, count);
+    const originalCount = Math.max(
+      rep.originalAbsenceCountInMonth || 1,
+      maxCountByMonth.get(m) || 1
+    );
+    const monthsToAdd = originalCount >= 2 ? 2 : 1;
+    const fixedDeadlineMonthKey = rep.fixedDeadlineMonthKey || getDeadlineMonthKey(m, monthsToAdd);
+    const deadlineDescription = calculateReplacementDeadline(m, originalCount);
+
     return {
       ...rep,
+      originalAbsenceCountInMonth: originalCount,
+      fixedDeadlineMonthKey,
       deadlineDescription,
     };
   });
 }
 
 /**
- * Automatically completes a replacement and dismisses (removes) the linked absence
- * from the member's record, recalculating hours and syncing deadlines in real-time.
+ * Automatically completes a replacement, transforms the original absence shift in the history
+ * into "Plantão de Reposição Concluído" with the new completion date and [Concluído] status,
+ * and deducts -1 from the corresponding absence counter in real-time.
  */
 export function completeReplacementAndDismissAbsence(
   member: Member,
@@ -239,19 +365,25 @@ export function completeReplacementAndDismissAbsence(
 
   const hoursToAdd = customHours ?? rep.scheduledHours ?? 12;
   const finalDate = completionDate && completionDate.trim() ? completionDate.trim() : new Date().toLocaleDateString('pt-BR');
+  const originAbsenceId = rep.faltaOrigemId || rep.absenceId;
+  const originShiftId = rep.shiftId;
+  const missedDayMonth = (rep.missedShiftDate || '').split(' ')[0].trim();
+  const originMonth = rep.deadlineMonth || 'out/26';
 
-  // 1. Locate the linked absence to dismiss
+  const { dayMonth: newShiftDate, monthKey: newShiftMonthKey } = parseDateToShiftParts(finalDate, originMonth);
+
+  // 1. Locate the linked absence to dismiss (-1 in Faltas Justificadas or Faltas Não Justif.)
   let dismissedAbsence: import('../types/league').AbsenceRecord | null = null;
   let targetType: 'justificada' | 'injustificada' | null = null;
 
-  // Check direct ID match
-  if (rep.absenceId) {
-    const fj = member.justifiedAbsences.find(a => a.id === rep.absenceId);
+  // Priority A: Direct match by faltaOrigemId / absenceId
+  if (originAbsenceId) {
+    const fj = member.justifiedAbsences.find(a => a.id === originAbsenceId);
     if (fj) {
       dismissedAbsence = fj;
       targetType = 'justificada';
     } else {
-      const fnj = member.unjustifiedAbsences.find(a => a.id === rep.absenceId);
+      const fnj = member.unjustifiedAbsences.find(a => a.id === originAbsenceId);
       if (fnj) {
         dismissedAbsence = fnj;
         targetType = 'injustificada';
@@ -259,7 +391,7 @@ export function completeReplacementAndDismissAbsence(
     }
   }
 
-  // Check matching by replacementId
+  // Priority B: Match by replacementId
   if (!dismissedAbsence) {
     const fj = member.justifiedAbsences.find(a => a.replacementId === replacementId);
     if (fj) {
@@ -274,14 +406,14 @@ export function completeReplacementAndDismissAbsence(
     }
   }
 
-  // Check matching by shiftId
-  if (!dismissedAbsence && rep.shiftId) {
-    const fj = member.justifiedAbsences.find(a => a.shiftId === rep.shiftId);
+  // Priority C: Match by shiftId
+  if (!dismissedAbsence && originShiftId) {
+    const fj = member.justifiedAbsences.find(a => a.shiftId === originShiftId);
     if (fj) {
       dismissedAbsence = fj;
       targetType = 'justificada';
     } else {
-      const fnj = member.unjustifiedAbsences.find(a => a.shiftId === rep.shiftId);
+      const fnj = member.unjustifiedAbsences.find(a => a.shiftId === originShiftId);
       if (fnj) {
         dismissedAbsence = fnj;
         targetType = 'injustificada';
@@ -289,19 +421,18 @@ export function completeReplacementAndDismissAbsence(
     }
   }
 
-  // Check matching by missedShiftDate or deadlineMonth reference
+  // Priority D: Match by missedShiftDate or deadlineMonth reference
   if (!dismissedAbsence) {
     const refDate = rep.missedShiftDate || '';
     const refMonth = rep.deadlineMonth || '';
 
-    // Try finding by exact date / month string
     if (refDate) {
-      const fj = member.justifiedAbsences.find(a => refDate.includes(a.date) || a.date.includes(refDate));
+      const fj = member.justifiedAbsences.find(a => refDate.includes(a.date) || a.date.includes(refDate) || (missedDayMonth && a.date.startsWith(missedDayMonth)));
       if (fj) {
         dismissedAbsence = fj;
         targetType = 'justificada';
       } else {
-        const fnj = member.unjustifiedAbsences.find(a => refDate.includes(a.date) || a.date.includes(refDate));
+        const fnj = member.unjustifiedAbsences.find(a => refDate.includes(a.date) || a.date.includes(refDate) || (missedDayMonth && a.date.startsWith(missedDayMonth)));
         if (fnj) {
           dismissedAbsence = fnj;
           targetType = 'injustificada';
@@ -309,7 +440,6 @@ export function completeReplacementAndDismissAbsence(
       }
     }
 
-    // Try finding by monthKey
     if (!dismissedAbsence && refMonth) {
       const fj = member.justifiedAbsences.find(a => (a.monthKey || 'out/26') === refMonth);
       if (fj) {
@@ -324,7 +454,6 @@ export function completeReplacementAndDismissAbsence(
       }
     }
 
-    // Fallback: pick the first pending absence from the member
     if (!dismissedAbsence) {
       if (member.justifiedAbsences.length > 0) {
         dismissedAbsence = member.justifiedAbsences[0];
@@ -336,16 +465,32 @@ export function completeReplacementAndDismissAbsence(
     }
   }
 
-  // 2. Remove the dismissed absence from the arrays
+  // 2. Remove strictly 1 dismissed absence from the arrays (-1 in FJ or FNJ counter)
+  let fjDismissed = false;
   const updatedJustified = dismissedAbsence && targetType === 'justificada'
-    ? member.justifiedAbsences.filter(a => a.id !== dismissedAbsence!.id)
+    ? member.justifiedAbsences.filter(a => {
+        if (fjDismissed) return true;
+        if (a.id === dismissedAbsence!.id) {
+          fjDismissed = true;
+          return false;
+        }
+        return true;
+      })
     : member.justifiedAbsences;
 
+  let fnjDismissed = false;
   const updatedUnjustified = dismissedAbsence && targetType === 'injustificada'
-    ? member.unjustifiedAbsences.filter(a => a.id !== dismissedAbsence!.id)
+    ? member.unjustifiedAbsences.filter(a => {
+        if (fnjDismissed) return true;
+        if (a.id === dismissedAbsence!.id) {
+          fnjDismissed = true;
+          return false;
+        }
+        return true;
+      })
     : member.unjustifiedAbsences;
 
-  // 3. Mark replacement as completed
+  // 3. Mark replacement as completed (removes it from pending replacements list -> -1 in Reposições Pendentes)
   const updatedReplacements = syncMemberReplacementsDeadlines(
     member.replacements.map(r => {
       if (r.id === replacementId) {
@@ -356,32 +501,68 @@ export function completeReplacementAndDismissAbsence(
         };
       }
       return r;
-    })
+    }),
+    member
   );
 
-  // 4. Update shift record if it was an unexcused absence shift
+  // 4. Locate original absence record in Histórico de Escalas Realizadas (via faltaOrigemId / absenceId / shiftId)
+  // and TRANSFORM it into "Plantão de Reposição Concluído" with [Concluído] badge and the new completion date!
+  let shiftTransformed = false;
   const updatedShifts = member.shifts.map(s => {
-    if (
-      (dismissedAbsence && (s.absenceId === dismissedAbsence.id || s.id === dismissedAbsence.shiftId)) ||
-      (rep.shiftId && s.id === rep.shiftId) ||
-      s.replacementId === replacementId
-    ) {
+    if (shiftTransformed) return s;
+
+    const isDirectMatch =
+      s.replacementId === replacementId ||
+      (originShiftId && s.id === originShiftId) ||
+      (originAbsenceId && (s.absenceId === originAbsenceId || s.id === originAbsenceId)) ||
+      (dismissedAbsence && (s.absenceId === dismissedAbsence.id || s.id === dismissedAbsence.shiftId));
+
+    const isFallbackDateMatch =
+      !originShiftId &&
+      !originAbsenceId &&
+      (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada' || s.description?.includes('Falta')) &&
+      missedDayMonth &&
+      (s.date === missedDayMonth || s.date.startsWith(missedDayMonth));
+
+    if (isDirectMatch || isFallbackDateMatch) {
+      shiftTransformed = true;
       return {
         ...s,
-        shiftStatus: 'concluido' as const,
-        description: `Plantão Reposto em ${finalDate} (+${hoursToAdd}h)`,
+        date: newShiftDate,
+        monthKey: newShiftMonthKey,
         hours: hoursToAdd,
+        type: 'reposicao' as const,
+        shiftStatus: 'concluido' as const,
+        description: 'Plantão de Reposição Concluído',
       };
     }
     return s;
   });
+
+  // If the original absence didn't have a shift entry in member.shifts yet, insert the transformed shift
+  const finalShifts = shiftTransformed
+    ? updatedShifts
+    : [
+        {
+          id: originShiftId || `s-rep-${Date.now()}`,
+          date: newShiftDate,
+          monthKey: newShiftMonthKey,
+          hours: hoursToAdd,
+          type: 'reposicao' as const,
+          shiftStatus: 'concluido' as const,
+          description: 'Plantão de Reposição Concluído',
+          absenceId: originAbsenceId,
+          replacementId,
+        },
+        ...updatedShifts,
+      ];
 
   const updatedMember: Member = {
     ...member,
     replacements: updatedReplacements,
     justifiedAbsences: updatedJustified,
     unjustifiedAbsences: updatedUnjustified,
-    shifts: updatedShifts,
+    shifts: finalShifts,
     accumulatedHours: member.accumulatedHours + hoursToAdd,
     hoursUpdated: true,
   };
@@ -390,6 +571,144 @@ export function completeReplacementAndDismissAbsence(
     updatedMember,
     dismissedAbsence,
     hoursAdded: hoursToAdd,
+  };
+}
+
+/**
+ * Bidirectional Cascade Deletion when a Replacement is manually deleted (Trash Can icon):
+ * - Uses `faltaOrigemId` / `absenceId` / `shiftId` to find and automatically delete the original shift in `member.shifts`
+ * - Deducts -1 in Reposições Pendentes
+ * - Deducts -1 in the corresponding absence (F.J or F.N.J)
+ * - If the origin was an F.N.J, also deducts -1 Advertência
+ */
+export function deleteReplacementWithCascade(
+  member: Member,
+  replacementId: string
+): { updatedMember: Member; wasFNJ: boolean; wasFJ: boolean } {
+  const rep = member.replacements.find(r => r.id === replacementId);
+  if (!rep) {
+    return { updatedMember: member, wasFNJ: false, wasFJ: false };
+  }
+
+  const originAbsenceId = rep.faltaOrigemId || rep.absenceId;
+  const originShiftId = rep.shiftId;
+  const missedDayMonth = (rep.missedShiftDate || '').split(' ')[0].trim();
+  const originMonth = rep.deadlineMonth || 'out/26';
+
+  // 1. Find and remove the original record in Histórico de Escalas Realizadas (member.shifts)
+  let removedShift: import('../types/league').ShiftRecord | null = null;
+  const updatedShifts = member.shifts.filter(s => {
+    if (removedShift) return true;
+
+    const isDirectMatch =
+      s.replacementId === replacementId ||
+      (originShiftId && s.id === originShiftId) ||
+      (originAbsenceId && (s.absenceId === originAbsenceId || s.id === originAbsenceId));
+
+    const isFallbackMatch =
+      (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada' || s.description?.includes('Falta')) &&
+      missedDayMonth &&
+      (s.date === missedDayMonth || s.date.startsWith(missedDayMonth)) &&
+      (!originMonth || s.monthKey === originMonth);
+
+    if (isDirectMatch || isFallbackMatch) {
+      removedShift = s;
+      return false; // Delete strictly this 1 original shift record
+    }
+    return true;
+  });
+
+  const effectiveAbsenceId = originAbsenceId || (removedShift as import('../types/league').ShiftRecord | null)?.absenceId;
+  const effectiveShiftId = originShiftId || (removedShift as import('../types/league').ShiftRecord | null)?.id;
+
+  // 2. Find and remove strictly 1 linked absence (-1 in F.J or -1 in F.N.J)
+  let removedFJ: import('../types/league').AbsenceRecord | null = null;
+  const updatedJustified = member.justifiedAbsences.filter(a => {
+    if (removedFJ) return true;
+    const isMatch =
+      a.replacementId === replacementId ||
+      (effectiveAbsenceId && a.id === effectiveAbsenceId) ||
+      (effectiveShiftId && a.shiftId === effectiveShiftId) ||
+      (missedDayMonth && (a.date === missedDayMonth || a.date.startsWith(missedDayMonth)) && (!originMonth || (a.monthKey || 'out/26') === originMonth));
+
+    if (isMatch) {
+      removedFJ = a;
+      return false;
+    }
+    return true;
+  });
+
+  let removedFNJ: import('../types/league').AbsenceRecord | null = null;
+  const updatedUnjustified = member.unjustifiedAbsences.filter(a => {
+    if (removedFNJ || removedFJ) return true;
+    const isMatch =
+      a.replacementId === replacementId ||
+      (effectiveAbsenceId && a.id === effectiveAbsenceId) ||
+      (effectiveShiftId && a.shiftId === effectiveShiftId) ||
+      (missedDayMonth && (a.date === missedDayMonth || a.date.startsWith(missedDayMonth)) && (!originMonth || (a.monthKey || 'out/26') === originMonth));
+
+    if (isMatch) {
+      removedFNJ = a;
+      return false;
+    }
+    return true;
+  });
+
+  const wasFNJ = Boolean(
+    removedFNJ ||
+    (removedShift as import('../types/league').ShiftRecord | null)?.shiftStatus === 'falta_injustificada' ||
+    rep.notes?.toLowerCase().includes('não justificada')
+  );
+  const wasFJ = Boolean(
+    removedFJ ||
+    (removedShift as import('../types/league').ShiftRecord | null)?.shiftStatus === 'falta_justificada' ||
+    (!wasFNJ && rep.notes?.toLowerCase().includes('justificada'))
+  );
+
+  // 3. If origin was F.N.J, also deduct -1 Advertência
+  let updatedWarnings = member.warnings;
+  if (wasFNJ) {
+    const targetWarnId = (removedFNJ as import('../types/league').AbsenceRecord | null)?.warningId;
+    const refDateForWarn = missedDayMonth || (removedShift as import('../types/league').ShiftRecord | null)?.date || '';
+    let warnRemoved = false;
+
+    updatedWarnings = member.warnings.filter(w => {
+      if (warnRemoved) return true;
+      const isMatch =
+        (targetWarnId && w.id === targetWarnId) ||
+        (effectiveAbsenceId && w.id === `w-${effectiveAbsenceId}`) ||
+        (refDateForWarn && w.reason && w.reason.includes(refDateForWarn));
+
+      if (isMatch) {
+        warnRemoved = true;
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // 4. Remove the replacement (-1 in Reposições Pendentes) and deduct hours if it was already completed
+  const hoursToDeduct = rep.completed ? (rep.scheduledHours || 12) : 0;
+  const remainingReplacements = member.replacements.filter(r => r.id !== replacementId);
+
+  const nextMemberDraft: Member = {
+    ...member,
+    shifts: updatedShifts,
+    justifiedAbsences: updatedJustified,
+    unjustifiedAbsences: updatedUnjustified,
+    warnings: updatedWarnings,
+    accumulatedHours: Math.max(0, member.accumulatedHours - hoursToDeduct),
+  };
+
+  const updatedReplacements = syncMemberReplacementsDeadlines(remainingReplacements, nextMemberDraft);
+
+  return {
+    updatedMember: {
+      ...nextMemberDraft,
+      replacements: updatedReplacements,
+    },
+    wasFNJ,
+    wasFJ,
   };
 }
 

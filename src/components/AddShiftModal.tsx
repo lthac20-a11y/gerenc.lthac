@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { X, Calendar, Plus, Check, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 import { Member } from '../types/league';
 import { calculateReplacementDeadline } from '../utils/leagueCalculations';
-import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, formatFullMonthYear, parseMonthKey } from '../utils/dateUtils';
+import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, formatFullMonthYear, parseMonthKey, formatNumericMonthYear, formatReferenceMonthYear } from '../utils/dateUtils';
+import { CustomDatePicker } from './CustomDatePicker';
 
 export type ShiftSubmissionStatus = 'concluido' | 'falta_justificada' | 'falta_injustificada';
 
@@ -38,10 +39,24 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
   ];
 
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(initialMemberIds);
-  const [date, setDate] = useState(() => {
+  const [fullIsoDate, setFullIsoDate] = useState(() => {
     const now = new Date();
-    return now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   });
+
+  const handleDateChange = (isoVal: string) => {
+    setFullIsoDate(isoVal);
+    const parts = isoVal.split('-');
+    if (parts.length === 3) {
+      const [yearStr, monthStr] = parts;
+      const mIdx = Math.max(0, Math.min(11, parseInt(monthStr, 10) - 1));
+      const computedMonthKey = formatMonthKey(mIdx, parseInt(yearStr, 10));
+      setMonthKey(computedMonthKey);
+    }
+  };
   const [monthKey, setMonthKey] = useState(() => formatMonthKey(currentMonthIdx, currentYear));
   const [hours, setHours] = useState(12);
   const [shiftStatus, setShiftStatus] = useState<ShiftSubmissionStatus>('concluido');
@@ -79,8 +94,14 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
       description = 'Falta Não Justificada (Gerou 1 ADV e Requer reposição)';
     }
 
+    const dateParts = fullIsoDate.split('-');
+    const formattedDate =
+      shiftStatus === 'concluido'
+        ? (dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}` : fullIsoDate)
+        : formatNumericMonthYear(monthKey);
+
     onAddShiftsToMembers(selectedMemberIds, {
-      date,
+      date: formattedDate,
       monthKey,
       hours: Number(hours),
       type: 'plantao',
@@ -115,21 +136,23 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs flex-1 overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-slate-300 font-semibold block uppercase text-[10px] mb-1">Data (Dia/Mês) *</label>
-              <input
-                type="text"
-                required
-                placeholder="Ex: 22/03"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono"
-              />
-            </div>
+          <div className={`grid grid-cols-1 ${shiftStatus === 'concluido' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
+            {shiftStatus === 'concluido' && (
+              <div>
+                <CustomDatePicker
+                  label="Data do Plantão"
+                  required
+                  value={fullIsoDate}
+                  onChange={handleDateChange}
+                  format="ISO"
+                />
+              </div>
+            )}
 
             <div>
-              <label className="text-slate-300 font-semibold block uppercase text-[10px] mb-1">Mês da Escala *</label>
+              <label className="text-slate-300 font-semibold block uppercase text-[10px] mb-1">
+                {shiftStatus === 'concluido' ? 'Mês da Escala *' : 'Mês de Referência (Mês/Ano) *'}
+              </label>
               <select
                 value={monthKey}
                 onChange={e => setMonthKey(e.target.value)}
@@ -139,7 +162,7 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
                   const { monthIndex, year } = parseMonthKey(m);
                   return (
                     <option key={m} value={m}>
-                      {m} ({formatFullMonthYear(monthIndex, year)})
+                      Mês de Referência: {formatReferenceMonthYear(m, m)} ({formatFullMonthYear(monthIndex, year)})
                     </option>
                   );
                 })}

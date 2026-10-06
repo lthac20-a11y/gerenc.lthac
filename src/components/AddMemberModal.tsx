@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, UserPlus } from 'lucide-react';
 import { Member, RoleInLeague } from '../types/league';
+import { CustomDatePicker } from './CustomDatePicker';
 
 interface AddMemberModalProps {
   onClose: () => void;
@@ -90,14 +91,12 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({
             </div>
 
             <div>
-              <label className="text-slate-300 font-semibold block uppercase text-[10px]">Data de Entrada *</label>
-              <input
-                type="text"
+              <CustomDatePicker
+                label="Data de Entrada"
                 required
-                placeholder="DD/MM/AAAA"
                 value={entryDate}
-                onChange={e => setEntryDate(e.target.value)}
-                className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono"
+                onChange={val => setEntryDate(val)}
+                format="BR"
               />
             </div>
           </div>
