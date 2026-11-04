@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { LeagueConfig } from '../types/league';
 import { useAuth } from '../context/AuthContext';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   currentTab: string;
@@ -164,8 +165,10 @@ export const Header: React.FC<HeaderProps> = ({
               })}
             </nav>
 
-            {/* RIGHT: ADMIN PILL & LOGOUT */}
+            {/* RIGHT: PWA INSTALL, ADMIN PILL & LOGOUT */}
             <div className="flex items-center gap-2.5 shrink-0">
+              <PWAInstallButton />
+
               <div className={`flex items-center gap-1.5 px-3.5 py-2 bg-[#080d16] border rounded-xl text-xs font-bold ${
                 isCoordination 
                   ? 'border-amber-500/40 text-amber-300 shadow-xs' 
@@ -276,6 +279,9 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* In-App PWA Install in Mobile Drawer */}
+              <PWAInstallButton variant="mobile-menu" />
 
               {/* Quick Action Shortcuts (Coordination Only) */}
               {isCoordination && (

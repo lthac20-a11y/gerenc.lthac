@@ -95,10 +95,12 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
     }
 
     const dateParts = fullIsoDate.split('-');
+    const { monthIndex, year } = parseMonthKey(monthKey);
+    const scaleMonthFormatted = formatFullMonthYear(monthIndex, year);
     const formattedDate =
       shiftStatus === 'concluido'
         ? (dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}` : fullIsoDate)
-        : formatNumericMonthYear(monthKey);
+        : scaleMonthFormatted;
 
     onAddShiftsToMembers(selectedMemberIds, {
       date: formattedDate,

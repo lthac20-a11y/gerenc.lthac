@@ -302,6 +302,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   };
 
   // Handler: Save Direct Shift
+  // Handler: Save Direct Shift
   const handleSaveDirectShift = (e: React.FormEvent) => {
     e.preventDefault();
     if (!directAddModal.member || !onUpdateMember) return;
@@ -309,6 +310,9 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
     const targetMember = directAddModal.member;
     const shiftDate = directAddModal.date;
     const shiftMonth = directAddModal.monthKey;
+    const isAbsence = directShiftStatus === 'falta_justificada' || directShiftStatus === 'falta_injustificada';
+    const { monthIndex, year } = parseMonthKey(shiftMonth);
+    const scaleMonthFormatted = formatFullMonthYear(monthIndex, year);
 
     if (directShiftStatus === 'concluido') {
       const newShift: ShiftRecord = {
@@ -339,10 +343,10 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
 
       const newAbsence = {
         id: absenceId,
-        date: shiftDate,
+        date: scaleMonthFormatted,
         monthKey: shiftMonth,
         type: 'justificada' as const,
-        reason: `Falta justificada no plantão de ${shiftDate} (${shiftMonth})`,
+        reason: `Falta justificada na escala de ${scaleMonthFormatted}`,
         requiresReplacement: true,
         shiftId,
         replacementId,
@@ -358,18 +362,18 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         completed: false,
         deadlineMonth: shiftMonth,
         deadlineDescription: deadlineText,
-        missedShiftDate: `${shiftDate} (${shiftMonth})`,
-        notes: `Falta Justificada em ${shiftDate} (${shiftMonth}) — sem advertência, requer reposição. Prazo: ${deadlineText}`,
+        missedShiftDate: scaleMonthFormatted,
+        notes: `Falta Justificada na escala de ${scaleMonthFormatted} — sem advertência, requer reposição. Prazo: ${deadlineText}`,
       };
 
       const newShift: ShiftRecord = {
         id: shiftId,
-        date: shiftDate,
+        date: scaleMonthFormatted,
         monthKey: shiftMonth,
         hours: 0,
         type: 'plantao',
         shiftStatus: 'falta_justificada',
-        description: 'Falta Justificada (sem advertência, requer reposição)',
+        description: `Falta Justificada na escala de ${scaleMonthFormatted} (sem advertência, requer reposição)`,
         absenceId,
         replacementId,
       };
@@ -393,18 +397,18 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
 
       const newWarning = {
         id: warningId,
-        date: shiftDate,
-        reason: `Advertência automática por falta não justificada no plantão de ${shiftDate} (${shiftMonth})`,
+        date: scaleMonthFormatted,
+        reason: `Advertência automática por falta não justificada na escala de ${scaleMonthFormatted}`,
         severity: 'moderada' as const,
         active: true,
       };
 
       const newAbsence = {
         id: absenceId,
-        date: shiftDate,
+        date: scaleMonthFormatted,
         monthKey: shiftMonth,
         type: 'injustificada' as const,
-        reason: `Falta não justificada no plantão de ${shiftDate} (${shiftMonth})`,
+        reason: `Falta não justificada na escala de ${scaleMonthFormatted}`,
         requiresReplacement: true,
         shiftId,
         replacementId,
@@ -421,18 +425,18 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
         completed: false,
         deadlineMonth: shiftMonth,
         deadlineDescription: deadlineText,
-        missedShiftDate: `${shiftDate} (${shiftMonth})`,
-        notes: `Falta Não Justificada em ${shiftDate} (${shiftMonth}) — gerou 1 ADV e requer reposição. Prazo: ${deadlineText}`,
+        missedShiftDate: scaleMonthFormatted,
+        notes: `Falta Não Justificada na escala de ${scaleMonthFormatted} — gerou 1 ADV e requer reposição. Prazo: ${deadlineText}`,
       };
 
       const newShift: ShiftRecord = {
         id: shiftId,
-        date: shiftDate,
+        date: scaleMonthFormatted,
         monthKey: shiftMonth,
         hours: 0,
         type: 'plantao',
         shiftStatus: 'falta_injustificada',
-        description: 'Falta Não Justificada (Gerou 1 ADV e 1 Reposição)',
+        description: `Falta Não Justificada na escala de ${scaleMonthFormatted} (Gerou 1 ADV e 1 Reposição)`,
         absenceId,
         replacementId,
       };
@@ -623,21 +627,30 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                   ) : (
                     <div className="space-y-1.5">
                       {monthlyShifts.map((shift) => {
-                        const formattedDate = shift.date.length > 5 && shift.date.includes('/')
-                          ? shift.date.slice(0, 5)
-                          : shift.date;
+                        const isAbsence = shift.shiftStatus === 'falta_injustificada' || 
+                                          shift.shiftStatus === 'falta_justificada' || 
+                                          shift.description?.toLowerCase().includes('falta') ||
+                                          shift.hours === 0;
+
+                        const shiftMonthKey = shift.monthKey || parseDateToShiftParts(shift.date, shift.monthKey).monthKey || activeMonthKey;
+                        const { monthIndex, year } = parseMonthKey(shiftMonthKey);
+                        const scaleMonthLabel = formatFullMonthYear(monthIndex, year);
+
+                        const displayDate = isAbsence
+                          ? scaleMonthLabel
+                          : (shift.date.length > 5 && shift.date.includes('/') ? shift.date.slice(0, 5) : shift.date);
 
                         return (
                           <div
                             key={shift.id}
                             className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-950/40 border border-slate-800/40 text-xs"
                           >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="font-mono font-semibold text-slate-200 shrink-0">
-                                {formattedDate}
+                            <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
+                              <span className={`font-mono font-semibold shrink-0 ${isAbsence ? 'text-amber-300/90' : 'text-slate-200'}`}>
+                                {displayDate}
                               </span>
                               <span className="text-slate-400 font-medium shrink-0">
-                                {shift.type === 'reposicao' ? 'Reposição' : 'Plantão'}
+                                {isAbsence ? 'Escala' : (shift.type === 'reposicao' ? 'Reposição' : 'Plantão')}
                               </span>
                               {shift.shiftStatus === 'falta_injustificada' ? (
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/25 whitespace-nowrap">
@@ -1049,18 +1062,26 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                         {/* Plantões em Linha Única Super Compacta */}
                         {group.shifts.map(shift => {
                           const parts = parseDateToShiftParts(shift.date, shift.monthKey);
-                          const displayDate = parts.dayMonth || shift.date;
+                          const isAbsence = shift.shiftStatus === 'falta_injustificada' || 
+                                            shift.shiftStatus === 'falta_justificada' || 
+                                            shift.description?.toLowerCase().includes('falta') ||
+                                            shift.hours === 0;
+
+                          const { monthIndex, year } = parseMonthKey(shift.monthKey || parts.monthKey || group.monthKey);
+                          const scaleMonthLabel = formatFullMonthYear(monthIndex, year);
+                          const displayDate = isAbsence ? scaleMonthLabel : (parts.dayMonth || shift.date);
+
                           const statusLabel = shift.shiftStatus === 'falta_injustificada' 
-                            ? 'F.N.J' 
+                            ? 'Falta Não Just.' 
                             : shift.shiftStatus === 'falta_justificada' 
-                            ? 'F.J' 
+                            ? 'Falta Justificada' 
                             : 'Concluído';
                           const statusStyle = shift.shiftStatus === 'falta_injustificada'
                             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                             : shift.shiftStatus === 'falta_justificada'
-                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                             : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
-                          const typeLabel = shift.type === 'reposicao' ? 'Reposição' : 'Plantão';
+                          const typeLabel = isAbsence ? 'Escala' : (shift.type === 'reposicao' ? 'Reposição' : 'Plantão');
 
                           return (
                             <div 
@@ -1068,13 +1089,13 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                               className="py-1.5 px-2.5 bg-slate-800/40 border border-slate-800/80 rounded-lg flex items-center justify-between text-xs hover:bg-slate-800/60 transition-colors"
                             >
                               <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-bold text-white font-mono text-xs shrink-0">{displayDate}</span>
+                                <span className={`font-bold font-mono text-xs shrink-0 ${isAbsence ? 'text-amber-300/90' : 'text-white'}`}>{displayDate}</span>
                                 <span className="text-slate-400 text-xs truncate max-w-[140px] sm:max-w-[180px]">{typeLabel}</span>
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${statusStyle}`}>
                                   {statusLabel}
                                 </span>
                               </div>
-                              <span className="font-mono font-bold text-emerald-400 text-xs shrink-0 ml-2">
+                              <span className={`font-mono font-bold text-xs shrink-0 ml-2 ${shift.hours > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
                                 {shift.hours}h
                               </span>
                             </div>
@@ -1143,52 +1164,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
             <form onSubmit={handleSaveDirectShift} className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <CustomDatePicker
-                    label="Data do Plantão"
-                    required
-                    value={directAddModal.date}
-                    onChange={val => {
-                      const parts = val.includes('-') ? val.split('-') : val.split('/');
-                      if (parts.length === 3) {
-                        if (val.includes('-')) {
-                          const [y, m, d] = parts;
-                          const mIdx = parseInt(m, 10) - 1;
-                          const monthKey = formatMonthKey(mIdx, parseInt(y, 10));
-                          setDirectAddModal(prev => ({ ...prev, date: `${d}/${m}`, monthKey }));
-                        } else {
-                          const [d, m, y] = parts;
-                          const mIdx = parseInt(m, 10) - 1;
-                          const monthKey = formatMonthKey(mIdx, parseInt(y, 10));
-                          setDirectAddModal(prev => ({ ...prev, date: `${d}/${m}`, monthKey }));
-                        }
-                      } else {
-                        setDirectAddModal(prev => ({ ...prev, date: val }));
-                      }
-                    }}
-                    format="BR"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Mês da Escala</label>
-                  <select
-                    value={directAddModal.monthKey}
-                    onChange={e => setDirectAddModal(prev => ({ ...prev, monthKey: e.target.value }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-mono"
-                  >
-                    {getMonthColumnsForYear(selectedYear).map((m: string) => {
-                      const { monthIndex, year } = parseMonthKey(m);
-                      return (
-                        <option key={m} value={m}>{formatFullMonthYear(monthIndex, year)}</option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Status *</label>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Status do Registro *</label>
                   <select
                     value={directShiftStatus}
                     onChange={e => setDirectShiftStatus(e.target.value as any)}
@@ -1203,18 +1179,92 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                 <div>
                   <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Carga Horária</label>
                   <select
-                    value={directShiftHours}
+                    value={directShiftStatus === 'concluido' ? directShiftHours : 0}
                     onChange={e => setDirectShiftHours(Number(e.target.value))}
                     disabled={directShiftStatus !== 'concluido'}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-mono disabled:opacity-50"
                   >
-                    <option value={12}>12 horas (Padrão)</option>
-                    <option value={6}>6 horas</option>
-                    <option value={4}>4 horas</option>
-                    <option value={24}>24 horas (Duplo)</option>
+                    {directShiftStatus !== 'concluido' ? (
+                      <option value={0}>0 horas (Falta computada)</option>
+                    ) : (
+                      <>
+                        <option value={12}>12 horas (Padrão)</option>
+                        <option value={6}>6 horas</option>
+                        <option value={4}>4 horas</option>
+                        <option value={24}>24 horas (Duplo)</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
+
+              {directShiftStatus === 'concluido' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <CustomDatePicker
+                      label="Data do Plantão"
+                      required
+                      value={directAddModal.date}
+                      onChange={val => {
+                        const parts = val.includes('-') ? val.split('-') : val.split('/');
+                        if (parts.length === 3) {
+                          if (val.includes('-')) {
+                            const [y, m, d] = parts;
+                            const mIdx = parseInt(m, 10) - 1;
+                            const monthKey = formatMonthKey(mIdx, parseInt(y, 10));
+                            setDirectAddModal(prev => ({ ...prev, date: `${d}/${m}`, monthKey }));
+                          } else {
+                            const [d, m, y] = parts;
+                            const mIdx = parseInt(m, 10) - 1;
+                            const monthKey = formatMonthKey(mIdx, parseInt(y, 10));
+                            setDirectAddModal(prev => ({ ...prev, date: `${d}/${m}`, monthKey }));
+                          }
+                        } else {
+                          setDirectAddModal(prev => ({ ...prev, date: val }));
+                        }
+                      }}
+                      format="BR"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Mês da Escala</label>
+                    <select
+                      value={directAddModal.monthKey}
+                      onChange={e => setDirectAddModal(prev => ({ ...prev, monthKey: e.target.value }))}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-mono"
+                    >
+                      {getMonthColumnsForYear(selectedYear).map((m: string) => {
+                        const { monthIndex, year } = parseMonthKey(m);
+                        return (
+                          <option key={m} value={m}>{formatFullMonthYear(monthIndex, year)}</option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5">
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block">
+                    Mês da Escala (Referência da Falta) *
+                  </label>
+                  <select
+                    value={directAddModal.monthKey}
+                    onChange={e => setDirectAddModal(prev => ({ ...prev, monthKey: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-mono"
+                  >
+                    {getMonthColumnsForYear(selectedYear).map((m: string) => {
+                      const { monthIndex, year } = parseMonthKey(m);
+                      return (
+                        <option key={m} value={m}>{formatFullMonthYear(monthIndex, year)}</option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-[11px] text-slate-400">
+                    Faltas vinculam-se ao mês da escala ({formatFullMonthYear(parseMonthKey(directAddModal.monthKey).monthIndex, parseMonthKey(directAddModal.monthKey).year)}), sem dia específico.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Descrição / Setor</label>

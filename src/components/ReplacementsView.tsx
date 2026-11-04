@@ -78,7 +78,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   onSelectMember,
 }) => {
   const { isCoordination } = useAuth();
-  const [filter, setFilter] = useState<'pendentes' | 'cumpridas' | 'todas'>('pendentes');
+  const [filter, setFilter] = useState<'pendentes' | 'todas'>('pendentes');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Diretrizes e Prazos Regimentais (Estado Dinâmico e Persistente)
@@ -168,21 +168,18 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
     .map(member => {
       const filteredReps = member.replacements.filter(item => {
         if (filter === 'pendentes') return !item.completed;
-        if (filter === 'cumpridas') return item.completed;
         return true;
       });
 
       const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase());
       
       const pendingRepsCount = member.replacements.filter(r => !r.completed).length;
-      const completedRepsCount = member.replacements.filter(r => r.completed).length;
 
       return {
         member,
         replacements: filteredReps,
         allMemberReplacements: member.replacements,
         pendingRepsCount,
-        completedRepsCount,
         matchesSearch,
       };
     })
@@ -361,21 +358,16 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
           )}
         </div>
 
-        {/* Faixa Única (3 Colunas) com as métricas compactas */}
-        <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-800/80 text-center">
+        {/* Faixa Única (2 Colunas) com as métricas compactas focadas em pendências */}
+        <div className="grid grid-cols-2 gap-2 mt-3 pt-2.5 border-t border-slate-800/80 text-center">
           <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Pendentes</span>
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Reposições Pendentes</span>
             <span className="text-xs font-bold text-amber-400 font-mono">{pendingCount}</span>
           </div>
 
           <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Integrantes</span>
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Integrantes com Pendência</span>
             <span className="text-xs font-bold text-white font-mono">{membersWithPending}</span>
-          </div>
-
-          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Cumpridas</span>
-            <span className="text-xs font-bold text-emerald-400 font-mono">{completedCount}</span>
           </div>
         </div>
 
@@ -543,7 +535,6 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full sm:w-auto flex-nowrap shrink-0">
           {[
             { id: 'pendentes', label: 'Pendentes', count: pendingCount, activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-            { id: 'cumpridas', label: 'Cumpridas', count: completedCount, activeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
             { id: 'todas', label: 'Todas', count: allReplacements.length, activeClass: 'bg-slate-800 text-white' },
           ].map(tab => (
             <button
@@ -595,10 +586,10 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
         {memberGroups.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs">
             <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
-            Nenhuma reposição pendente ou cumprida para este filtro.
+            Nenhuma reposição pendente encontrada.
           </div>
         ) : (
-          memberGroups.map(({ member, replacements, pendingRepsCount, completedRepsCount }) => {
+          memberGroups.map(({ member, replacements, pendingRepsCount }) => {
             const isExpanded = Boolean(expandedMembers[member.id]);
             const hasAnyOverdueReplacement = member.replacements.some(rep => {
               if (rep.completed) return false;
@@ -635,6 +626,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                   onClick={() => toggleExpand(member.id)}
                   className="p-3 sm:p-3.5 bg-slate-900 hover:bg-slate-800/60 transition-colors cursor-pointer flex items-center justify-between gap-3 select-none flex-nowrap"
                 >
+                  {/* Left Column (Avatar + Name + Hours subtitle) */}
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div 
                       onClick={(e) => {
@@ -648,42 +640,31 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectMember(member);
-                          }}
-                          className="text-xs sm:text-sm font-bold text-white hover:text-emerald-400 transition-colors cursor-pointer truncate font-display"
-                        >
-                          {member.name}
-                        </h3>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5 whitespace-nowrap">
+                      <h3 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectMember(member);
+                        }}
+                        className="text-xs sm:text-sm font-bold text-white hover:text-emerald-400 transition-colors cursor-pointer truncate font-display"
+                      >
+                        {member.name}
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5 truncate">
                         Total cadastrado: <strong className="text-white font-mono">{member.accumulatedHours}h</strong>
                       </p>
                     </div>
                   </div>
 
-                  {/* Summary Badges & Expand Icon */}
+                  {/* Right Column: Pending Badge ("X Rep.") + Expand Icon */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {pendingRepsCount > 0 && (
-                      <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 whitespace-nowrap">
+                    {pendingRepsCount > 0 ? (
+                      <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 whitespace-nowrap shrink-0">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         <span className="hidden sm:inline">{pendingRepsCount} {pendingRepsCount === 1 ? 'Reposição Pendente' : 'Reposições Pendentes'}</span>
                         <span className="inline sm:hidden">{pendingRepsCount} Rep.</span>
                       </span>
-                    )}
-
-                    {completedRepsCount > 0 && (
-                      <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 whitespace-nowrap">
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        <span>{completedRepsCount} {completedRepsCount === 1 ? 'Cumprida' : 'Cumpridas'}</span>
-                      </span>
-                    )}
-
-                    {pendingRepsCount === 0 && completedRepsCount === 0 && (
-                      <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-slate-800 text-slate-400 border border-slate-700 whitespace-nowrap">
+                    ) : (
+                      <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-slate-800 text-slate-400 border border-slate-700 whitespace-nowrap shrink-0">
                         Sem pendências
                       </span>
                     )}

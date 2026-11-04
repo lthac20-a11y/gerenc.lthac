@@ -1148,9 +1148,21 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                                         : 'text-emerald-400'
                                     }`} />
 
-                                    <span className="font-bold text-white font-mono text-xs shrink-0">
-                                      {shift.date}
-                                    </span>
+                                    {(() => {
+                                      const isAbsence = shift.shiftStatus === 'falta_injustificada' || 
+                                                        shift.shiftStatus === 'falta_justificada' || 
+                                                        shift.description?.toLowerCase().includes('falta') ||
+                                                        shift.hours === 0;
+                                      const { monthIndex, year } = parseMonthKey(shift.monthKey || group.monthKey);
+                                      const scaleMonthLabel = formatFullMonthYear(monthIndex, year);
+                                      const displayDate = isAbsence ? scaleMonthLabel : shift.date;
+
+                                      return (
+                                        <span className={`font-bold font-mono text-xs shrink-0 ${isAbsence ? 'text-amber-300/90' : 'text-white'}`}>
+                                          {displayDate}
+                                        </span>
+                                      );
+                                    })()}
 
                                     <span className="text-slate-200 font-medium truncate">
                                       {shift.shiftStatus === 'falta_injustificada'
