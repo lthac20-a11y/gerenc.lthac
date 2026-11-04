@@ -1,5 +1,5 @@
 {
-  "id": "/",
+  "id": "./",
   "name": "Liga do Trauma - LTHAC",
   "short_name": "LTHAC",
   "description": "Sistema de gestão de escalas de plantão, frequência, reposições e certificados da Liga do Trauma Hospital Angelina Caron (LTHAC).",
@@ -18,6 +18,12 @@
     },
     {
       "src": "./pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icone.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

@@ -1,24 +1,30 @@
 // LTHAC - Service Worker for Progressive Web App (PWA)
-const CACHE_NAME = 'lthac-pwa-v1';
+const CACHE_NAME = 'lthac-pwa-v3';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './icone.png',
   './pwa-192x192.png',
   './pwa-512x512.png',
+  './pwa-maskable-512x512.png',
   './apple-touch-icon.png',
   './icon.svg',
   './favicon.png'
 ];
 
-// Install: Precache shell assets
+// Install: Precache shell assets resiliently without failing if one asset has issues
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('PWA: Failed to cache some static assets during install', err);
-      });
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.allSettled(
+        PRECACHE_ASSETS.map((asset) =>
+          cache.add(asset).catch((err) => {
+            console.warn(`PWA: Cache add error for ${asset}:`, err);
+          })
+        )
+      );
     })
   );
 });
@@ -26,17 +32,27 @@ self.addEventListener('install', (event) => {
 // Activate: Clean up older cache versions and claim clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      );
-    }).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((name) => name !== CACHE_NAME)
+            .map((name) => caches.delete(name))
+        );
+      })
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch: Network first with cache fallback for HTML/assets; bypass Firebase & non-GET
+// Message listener to trigger immediate skipWaiting
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Fetch: Network first with cache fallback; bypass Firebase, Google APIs & chrome-extensions
 self.addEventListener('fetch', (event) => {
   const request = event.request;
 
@@ -47,25 +63,25 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Bypass Google APIs, Firebase, or external dynamic services from caching issues
+  // Bypass Google APIs, Firebase, or external dynamic services from caching
   if (
     url.hostname.includes('firestore.googleapis.com') ||
     url.hostname.includes('identitytoolkit') ||
     url.hostname.includes('firebaseio.com') ||
-    url.pathname.startsWith('/api/')
+    url.pathname.startsWith('/api/') ||
+    url.protocol.startsWith('chrome-extension')
   ) {
     return;
   }
 
-  // Network First, fallback to cache (ideal for real-time applications with offline fallback)
+  // Network First with fallback to cache
   event.respondWith(
     fetch(request)
       .then((networkResponse) => {
-        // If successful response, clone and update cache
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+        if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseToCache);
+            cache.put(request, responseToCache).catch(() => {});
           });
         }
         return networkResponse;
@@ -77,7 +93,10 @@ self.addEventListener('fetch', (event) => {
         }
         // Fallback to index.html for navigation requests
         if (request.mode === 'navigate') {
-          return caches.match('./') || caches.match('./index.html');
+          const indexHtml = (await caches.match('./index.html')) || (await caches.match('./'));
+          if (indexHtml) {
+            return indexHtml;
+          }
         }
         return new Response('Offline', { status: 503, statusText: 'Offline' });
       })

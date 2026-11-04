@@ -11,15 +11,25 @@ createRoot(document.getElementById('root')!).render(
 
 // Register Service Worker for PWA installability and offline support
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+  const registerSW = () => {
     navigator.serviceWorker
-      .register('./sw.js')
+      .register('./sw.js', { scope: './' })
       .then((registration) => {
-        console.log('PWA ServiceWorker registered with scope:', registration.scope);
+        // Trigger update check and activate waiting worker immediately
+        registration.update().catch(() => {});
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
       })
       .catch((error) => {
         console.warn('PWA ServiceWorker registration failed:', error);
       });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    registerSW();
+  } else {
+    window.addEventListener('load', registerSW);
+  }
 }
 
