@@ -41,6 +41,16 @@ export function formatFullMonthYear(monthIndex: number, year: number): string {
 }
 
 /**
+ * Formata o nome abreviado do mês e ano (ex: 9, 2026 -> 'Out / 2026', 10, 2026 -> 'Nov / 2026')
+ */
+export function formatShortMonthYear(monthIndex: number, year: number): string {
+  const safeMonth = (monthIndex + 12) % 12;
+  const shortName = SHORT_MONTH_NAMES[safeMonth];
+  const capitalized = shortName.charAt(0).toUpperCase() + shortName.slice(1);
+  return `${capitalized} / ${year}`;
+}
+
+/**
  * Formata uma chave de mês ou string de data para o formato limpo 'Outubro/2026'
  * (ex: 'out/26', '10/2026', '05/10 (out/26)' -> 'Outubro/2026')
  */

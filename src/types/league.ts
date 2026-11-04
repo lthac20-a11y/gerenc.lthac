@@ -1,4 +1,4 @@
-export type MemberStatus = 'ativo' | 'licenciado' | 'egresso' | 'desligado';
+export type MemberStatus = 'ativo' | 'licenciado' | 'egresso' | 'desligado' | 'baixa';
 
 export type RoleInLeague = 
   | 'Ligante'
@@ -64,6 +64,7 @@ export interface Member {
   entryDate: string; // DD/MM/YYYY
   role: RoleInLeague;
   status: MemberStatus;
+  isBaixa?: boolean; // Inativação reversível sem perda de histórico
   accumulatedHours: number;
   hoursUpdated: boolean; // HS ATU
   warnings: WarningRecord[]; // ADV count = active warnings length

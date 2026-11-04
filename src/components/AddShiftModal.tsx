@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar, Plus, Check, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 import { Member } from '../types/league';
 import { calculateReplacementDeadline } from '../utils/leagueCalculations';
-import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, formatFullMonthYear, parseMonthKey, formatNumericMonthYear, formatReferenceMonthYear } from '../utils/dateUtils';
+import { getCurrentYear, getCurrentMonthIndex, formatMonthKey, getMonthColumnsForYear, formatFullMonthYear, parseMonthKey, formatNumericMonthYear, formatReferenceMonthYear, formatShortMonthYear } from '../utils/dateUtils';
 import { CustomDatePicker } from './CustomDatePicker';
 
 export type ShiftSubmissionStatus = 'concluido' | 'falta_justificada' | 'falta_injustificada';
@@ -158,13 +158,13 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
               <select
                 value={monthKey}
                 onChange={e => setMonthKey(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono"
+                className="w-full px-2.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
               >
                 {dynamicMonthColumns.map(m => {
                   const { monthIndex, year } = parseMonthKey(m);
                   return (
                     <option key={m} value={m}>
-                      Mês de Referência: {formatReferenceMonthYear(m, m)} ({formatFullMonthYear(monthIndex, year)})
+                      {formatShortMonthYear(monthIndex, year)}
                     </option>
                   );
                 })}
@@ -176,12 +176,12 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
               <select
                 value={hours}
                 onChange={e => setHours(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono"
+                className="w-full px-2.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
               >
-                <option value={12}>12 horas (Padrão)</option>
-                <option value={6}>6 horas</option>
-                <option value={4}>4 horas (Aula/Reunião)</option>
-                <option value={24}>24 horas (Duplo)</option>
+                <option value={12}>12h (Padrão)</option>
+                <option value={6}>6h</option>
+                <option value={4}>4h (Aula/Reunião)</option>
+                <option value={24}>24h (Duplo)</option>
               </select>
             </div>
           </div>
@@ -198,11 +198,11 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
             <select
               value={shiftStatus}
               onChange={e => setShiftStatus(e.target.value as ShiftSubmissionStatus)}
-              className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 hover:border-slate-600 rounded-xl text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all cursor-pointer"
+              className="w-full px-2.5 py-2 bg-slate-800 border border-slate-700 hover:border-slate-600 rounded-xl text-white text-xs font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-all cursor-pointer"
             >
-              <option value="concluido">Plantão Concluído</option>
-              <option value="falta_justificada">Falta Justificada</option>
-              <option value="falta_injustificada">Falta Não Justificada</option>
+              <option value="concluido">Concluído</option>
+              <option value="falta_justificada">Falta Just. (FJ)</option>
+              <option value="falta_injustificada">Falta Não Just. (FNJ)</option>
             </select>
           </div>
 

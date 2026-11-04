@@ -396,20 +396,15 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
             setIsOpen(prev => !prev);
           }
         }}
-        className={`w-full px-3 py-2 bg-slate-900 border rounded-xl text-left font-mono text-xs flex items-center justify-between gap-2 transition-all cursor-pointer min-h-[40px] ${
+        className={`w-full px-2.5 py-2 bg-slate-900 border rounded-xl text-left font-mono text-xs flex items-center gap-2 transition-all cursor-pointer min-h-[38px] ${
           isOpen
             ? 'border-emerald-500 ring-2 ring-emerald-500/30 text-white shadow-lg shadow-emerald-950/40'
             : 'border-slate-700/80 hover:border-slate-600 text-slate-200 hover:text-white'
         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
-        <div className="flex items-center gap-2 truncate">
-          <CalendarIcon className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span className={value ? 'text-white font-semibold' : 'text-slate-400 font-normal'}>
-            {value ? formatDisplay(selectedDate) : placeholder}
-          </span>
-        </div>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-sans border border-slate-700 shrink-0">
-          Alterar
+        <CalendarIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <span className={`truncate ${value ? 'text-white font-semibold' : 'text-slate-400 font-normal'}`}>
+          {value ? formatDisplay(selectedDate) : placeholder}
         </span>
       </button>
 

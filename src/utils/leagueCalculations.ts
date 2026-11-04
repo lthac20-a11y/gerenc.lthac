@@ -1,4 +1,12 @@
-import { Member, LeagueConfig, CertificateEligibility } from '../types/league';
+import { 
+  Member, 
+  LeagueConfig, 
+  CertificateEligibility, 
+  ShiftRecord, 
+  AbsenceRecord, 
+  WarningRecord, 
+  ReplacementRecord 
+} from '../types/league';
 
 /**
  * Parses DD/MM/YYYY or YYYY-MM-DD into a Date object
@@ -187,7 +195,7 @@ export function calculateLeagueStats(members: Member[], config: LeagueConfig) {
   };
 }
 
-import { calculateDynamicReplacementDeadline, getDeadlineMonthKey, formatMonthKey, parseMonthKey } from './dateUtils';
+import { calculateDynamicReplacementDeadline, getDeadlineMonthKey, formatMonthKey, parseMonthKey, formatFullMonthYear } from './dateUtils';
 
 /**
  * Helper to parse a date string ('DD/MM/YYYY', 'YYYY-MM-DD', or 'DD/MM')
@@ -709,6 +717,425 @@ export function deleteReplacementWithCascade(
     },
     wasFNJ,
     wasFJ,
+  };
+}
+
+/**
+ * Adiciona ou edita individualmente um plantão, falta ou reposição de um integrante,
+ * recalculando automaticamente o saldo de horas acumuladas, advertências, faltas
+ * justificadas/injustificadas e reposições pendentes.
+ */
+export function updateOrAddMemberShift(
+  member: Member,
+  shiftData: {
+    id?: string;
+    date: string;
+    monthKey: string;
+    hours: number;
+    shiftStatus: 'concluido' | 'falta_justificada' | 'falta_injustificada';
+    description?: string;
+    type?: 'plantao' | 'reposicao' | 'aula' | 'reuniao' | 'evento' | 'outro';
+  },
+  existingShiftId?: string
+): Member {
+  const { monthIndex, year } = parseMonthKey(shiftData.monthKey);
+  const scaleMonthFormatted = formatFullMonthYear(monthIndex, year);
+  const finalShiftDate = (shiftData.shiftStatus === 'falta_justificada' || shiftData.shiftStatus === 'falta_injustificada')
+    ? scaleMonthFormatted
+    : shiftData.date;
+
+  // MODO EDIÇÃO
+  if (existingShiftId) {
+    const existingIndex = member.shifts.findIndex(s => s.id === existingShiftId);
+    if (existingIndex === -1) return member;
+
+    const oldShift = member.shifts[existingIndex];
+    const oldStatus = oldShift.shiftStatus || 'concluido';
+    const newStatus = shiftData.shiftStatus;
+
+    // Calcular diferença de horas
+    const oldContributedHours = (oldStatus !== 'falta_justificada' && oldStatus !== 'falta_injustificada' && !oldShift.isExcused)
+      ? (oldShift.hours || 0)
+      : 0;
+    const newContributedHours = (newStatus === 'concluido')
+      ? (Number(shiftData.hours) || 0)
+      : 0;
+    const hoursDelta = newContributedHours - oldContributedHours;
+
+    let updatedJustified = [...member.justifiedAbsences];
+    let updatedUnjustified = [...member.unjustifiedAbsences];
+    let updatedReplacements = [...member.replacements];
+    let updatedWarnings = [...member.warnings];
+
+    // IDs vinculados
+    let absenceId = oldShift.absenceId;
+    let replacementId = oldShift.replacementId;
+
+    // Se antes era Falta Justificada e agora mudou
+    if (oldStatus === 'falta_justificada' && newStatus !== 'falta_justificada') {
+      updatedJustified = updatedJustified.filter(a => a.id !== absenceId && a.shiftId !== existingShiftId);
+      updatedReplacements = updatedReplacements.filter(r => r.id !== replacementId && r.shiftId !== existingShiftId && r.absenceId !== absenceId);
+      absenceId = undefined;
+      replacementId = undefined;
+    }
+
+    // Se antes era Falta Não Justificada e agora mudou
+    if (oldStatus === 'falta_injustificada' && newStatus !== 'falta_injustificada') {
+      const removedFNJ = updatedUnjustified.find(a => a.id !== absenceId && a.shiftId !== existingShiftId);
+      const targetWarnId = removedFNJ?.warningId || `w-${absenceId}`;
+      updatedUnjustified = updatedUnjustified.filter(a => a.id !== absenceId && a.shiftId !== existingShiftId);
+      updatedReplacements = updatedReplacements.filter(r => r.id !== replacementId && r.shiftId !== existingShiftId && r.absenceId !== absenceId);
+      updatedWarnings = updatedWarnings.filter(w => w.id !== targetWarnId && !w.reason.includes(existingShiftId));
+      absenceId = undefined;
+      replacementId = undefined;
+    }
+
+    // Se agora passou a ser Falta Justificada
+    if (newStatus === 'falta_justificada' && oldStatus !== 'falta_justificada') {
+      absenceId = absenceId || `ab-fj-${Date.now()}`;
+      replacementId = replacementId || `rep-${Date.now()}`;
+      const currentAbsInMonth = [...updatedJustified, ...updatedUnjustified]
+        .filter(a => (a.monthKey || 'out/26') === shiftData.monthKey).length + 1;
+      const deadlineText = calculateReplacementDeadline(shiftData.monthKey, currentAbsInMonth);
+
+      updatedJustified.unshift({
+        id: absenceId,
+        date: scaleMonthFormatted,
+        monthKey: shiftData.monthKey,
+        type: 'justificada',
+        reason: `Falta justificada na escala de ${scaleMonthFormatted}`,
+        requiresReplacement: true,
+        shiftId: existingShiftId,
+        replacementId,
+      });
+
+      updatedReplacements.unshift({
+        id: replacementId,
+        memberId: member.id,
+        absenceId,
+        shiftId: existingShiftId,
+        scheduledDate: 'A definir',
+        scheduledHours: 12,
+        completed: false,
+        deadlineMonth: shiftData.monthKey,
+        deadlineDescription: deadlineText,
+        missedShiftDate: scaleMonthFormatted,
+        notes: `Falta Justificada na escala de ${scaleMonthFormatted} — sem advertência, requer reposição. Prazo: ${deadlineText}`,
+      });
+    }
+
+    // Se agora passou a ser Falta Não Justificada
+    if (newStatus === 'falta_injustificada' && oldStatus !== 'falta_injustificada') {
+      absenceId = absenceId || `ab-fnj-${Date.now()}`;
+      replacementId = replacementId || `rep-${Date.now()}`;
+      const warnId = `w-${Date.now()}`;
+      const currentAbsInMonth = [...updatedJustified, ...updatedUnjustified]
+        .filter(a => (a.monthKey || 'out/26') === shiftData.monthKey).length + 1;
+      const deadlineText = calculateReplacementDeadline(shiftData.monthKey, currentAbsInMonth);
+
+      updatedWarnings.unshift({
+        id: warnId,
+        date: scaleMonthFormatted,
+        reason: `Advertência automática por falta não justificada na escala de ${scaleMonthFormatted}`,
+        severity: 'moderada',
+        active: true,
+      });
+
+      updatedUnjustified.unshift({
+        id: absenceId,
+        date: scaleMonthFormatted,
+        monthKey: shiftData.monthKey,
+        type: 'injustificada',
+        reason: `Falta não justificada na escala de ${scaleMonthFormatted}`,
+        requiresReplacement: true,
+        shiftId: existingShiftId,
+        replacementId,
+        warningId: warnId,
+      });
+
+      updatedReplacements.unshift({
+        id: replacementId,
+        memberId: member.id,
+        absenceId,
+        shiftId: existingShiftId,
+        scheduledDate: 'A definir',
+        scheduledHours: 12,
+        completed: false,
+        deadlineMonth: shiftData.monthKey,
+        deadlineDescription: deadlineText,
+        missedShiftDate: scaleMonthFormatted,
+        notes: `Falta Não Justificada na escala de ${scaleMonthFormatted} — gerou 1 ADV e requer reposição. Prazo: ${deadlineText}`,
+      });
+    }
+
+    // Se manteve o mesmo status de falta, atualizar o mês e descrição vinculados
+    if (newStatus === 'falta_justificada' && oldStatus === 'falta_justificada') {
+      updatedJustified = updatedJustified.map(a => {
+        if (a.id === absenceId || a.shiftId === existingShiftId) {
+          return {
+            ...a,
+            date: scaleMonthFormatted,
+            monthKey: shiftData.monthKey,
+            reason: `Falta justificada na escala de ${scaleMonthFormatted}`,
+          };
+        }
+        return a;
+      });
+    } else if (newStatus === 'falta_injustificada' && oldStatus === 'falta_injustificada') {
+      updatedUnjustified = updatedUnjustified.map(a => {
+        if (a.id === absenceId || a.shiftId === existingShiftId) {
+          return {
+            ...a,
+            date: scaleMonthFormatted,
+            monthKey: shiftData.monthKey,
+            reason: `Falta não justificada na escala de ${scaleMonthFormatted}`,
+          };
+        }
+        return a;
+      });
+    }
+
+    const updatedShift: ShiftRecord = {
+      ...oldShift,
+      date: finalShiftDate,
+      monthKey: shiftData.monthKey,
+      hours: newStatus === 'concluido' ? Number(shiftData.hours) : 0,
+      shiftStatus: newStatus,
+      description: shiftData.description || (
+        newStatus === 'concluido' ? 'Plantão Concluído' :
+        newStatus === 'falta_justificada' ? `Falta Justificada na escala de ${scaleMonthFormatted}` :
+        `Falta Não Justificada na escala de ${scaleMonthFormatted} (Gerou 1 ADV)`
+      ),
+      type: shiftData.type || oldShift.type || 'plantao',
+      absenceId,
+      replacementId,
+    };
+
+    const updatedShifts = [...member.shifts];
+    updatedShifts[existingIndex] = updatedShift;
+
+    const draftMember: Member = {
+      ...member,
+      shifts: updatedShifts,
+      justifiedAbsences: updatedJustified,
+      unjustifiedAbsences: updatedUnjustified,
+      warnings: updatedWarnings,
+      accumulatedHours: Math.max(0, member.accumulatedHours + hoursDelta),
+      hoursUpdated: true,
+    };
+
+    return {
+      ...draftMember,
+      replacements: syncMemberReplacementsDeadlines(updatedReplacements, draftMember),
+    };
+  }
+
+  // MODO NOVO LANÇAMENTO
+  const shiftId = shiftData.id || `s-${Date.now()}`;
+  if (shiftData.shiftStatus === 'concluido') {
+    const newShift: ShiftRecord = {
+      id: shiftId,
+      date: finalShiftDate,
+      monthKey: shiftData.monthKey,
+      hours: Number(shiftData.hours) || 12,
+      type: shiftData.type || 'plantao',
+      shiftStatus: 'concluido',
+      description: shiftData.description || 'Plantão Pronto Socorro',
+    };
+
+    return {
+      ...member,
+      shifts: [newShift, ...member.shifts],
+      accumulatedHours: member.accumulatedHours + (Number(shiftData.hours) || 12),
+      hoursUpdated: true,
+    };
+  }
+
+  if (shiftData.shiftStatus === 'falta_justificada') {
+    const absenceId = `ab-fj-${Date.now()}`;
+    const replacementId = `rep-${Date.now()}`;
+    const currentAbsInMonth = [...member.justifiedAbsences, ...member.unjustifiedAbsences]
+      .filter(a => (a.monthKey || 'out/26') === shiftData.monthKey).length + 1;
+    const deadlineText = calculateReplacementDeadline(shiftData.monthKey, currentAbsInMonth);
+
+    const newAbsence: AbsenceRecord = {
+      id: absenceId,
+      date: scaleMonthFormatted,
+      monthKey: shiftData.monthKey,
+      type: 'justificada',
+      reason: `Falta justificada na escala de ${scaleMonthFormatted}`,
+      requiresReplacement: true,
+      shiftId,
+      replacementId,
+    };
+
+    const newReplacement: ReplacementRecord = {
+      id: replacementId,
+      memberId: member.id,
+      absenceId,
+      shiftId,
+      scheduledDate: 'A definir',
+      scheduledHours: 12,
+      completed: false,
+      deadlineMonth: shiftData.monthKey,
+      deadlineDescription: deadlineText,
+      missedShiftDate: scaleMonthFormatted,
+      notes: `Falta Justificada na escala de ${scaleMonthFormatted} — sem advertência, requer reposição. Prazo: ${deadlineText}`,
+    };
+
+    const newShift: ShiftRecord = {
+      id: shiftId,
+      date: scaleMonthFormatted,
+      monthKey: shiftData.monthKey,
+      hours: 0,
+      type: 'plantao',
+      shiftStatus: 'falta_justificada',
+      description: `Falta Justificada na escala de ${scaleMonthFormatted} (Requer reposição)`,
+      absenceId,
+      replacementId,
+    };
+
+    const draftMember: Member = {
+      ...member,
+      shifts: [newShift, ...member.shifts],
+      justifiedAbsences: [newAbsence, ...member.justifiedAbsences],
+      hoursUpdated: true,
+    };
+
+    return {
+      ...draftMember,
+      replacements: syncMemberReplacementsDeadlines([newReplacement, ...member.replacements], draftMember),
+    };
+  }
+
+  // Falta Não Justificada
+  const absenceId = `ab-fnj-${Date.now()}`;
+  const replacementId = `rep-${Date.now()}`;
+  const warningId = `w-${Date.now()}`;
+  const currentAbsInMonth = [...member.justifiedAbsences, ...member.unjustifiedAbsences]
+    .filter(a => (a.monthKey || 'out/26') === shiftData.monthKey).length + 1;
+  const deadlineText = calculateReplacementDeadline(shiftData.monthKey, currentAbsInMonth);
+
+  const newWarning: WarningRecord = {
+    id: warningId,
+    date: scaleMonthFormatted,
+    reason: `Advertência automática por falta não justificada na escala de ${scaleMonthFormatted}`,
+    severity: 'moderada',
+    active: true,
+  };
+
+  const newAbsence: AbsenceRecord = {
+    id: absenceId,
+    date: scaleMonthFormatted,
+    monthKey: shiftData.monthKey,
+    type: 'injustificada',
+    reason: `Falta não justificada na escala de ${scaleMonthFormatted}`,
+    requiresReplacement: true,
+    shiftId,
+    replacementId,
+    warningId,
+  };
+
+  const newReplacement: ReplacementRecord = {
+    id: replacementId,
+    memberId: member.id,
+    absenceId,
+    shiftId,
+    scheduledDate: 'A definir',
+    scheduledHours: 12,
+    completed: false,
+    deadlineMonth: shiftData.monthKey,
+    deadlineDescription: deadlineText,
+    missedShiftDate: scaleMonthFormatted,
+    notes: `Falta Não Justificada na escala de ${scaleMonthFormatted} — gerou 1 ADV e requer reposição. Prazo: ${deadlineText}`,
+  };
+
+  const newShift: ShiftRecord = {
+    id: shiftId,
+    date: scaleMonthFormatted,
+    monthKey: shiftData.monthKey,
+    hours: 0,
+    type: 'plantao',
+    shiftStatus: 'falta_injustificada',
+    description: `Falta Não Justificada na escala de ${scaleMonthFormatted} (Gerou 1 ADV e 1 Reposição)`,
+    absenceId,
+    replacementId,
+  };
+
+  const draftMember: Member = {
+    ...member,
+    shifts: [newShift, ...member.shifts],
+    warnings: [newWarning, ...member.warnings],
+    unjustifiedAbsences: [newAbsence, ...member.unjustifiedAbsences],
+    hoursUpdated: true,
+  };
+
+  return {
+    ...draftMember,
+    replacements: syncMemberReplacementsDeadlines([newReplacement, ...member.replacements], draftMember),
+  };
+}
+
+/**
+ * Exclui individualmente um plantão, falta ou reposição do histórico do integrante,
+ * deduzindo as horas acumuladas (se concluído) e removendo quaisquer faltas,
+ * reposições ou advertências vinculadas àquele registro.
+ */
+export function deleteMemberShift(
+  member: Member,
+  shiftId: string
+): Member {
+  const targetShift = member.shifts.find(s => s.id === shiftId);
+  if (!targetShift) return member;
+
+  const isConcluded = targetShift.shiftStatus !== 'falta_justificada' && 
+                      targetShift.shiftStatus !== 'falta_injustificada' && 
+                      !targetShift.isExcused;
+  const hoursToDeduct = isConcluded ? (targetShift.hours || 0) : 0;
+
+  const absenceId = targetShift.absenceId;
+  const replacementId = targetShift.replacementId;
+
+  // Filtrar shifts
+  const updatedShifts = member.shifts.filter(s => s.id !== shiftId);
+
+  // Filtrar faltas justificadas
+  const updatedJustified = member.justifiedAbsences.filter(
+    a => a.id !== absenceId && a.shiftId !== shiftId
+  );
+
+  // Filtrar faltas não justificadas e sua advertência correspondente
+  let removedWarnId: string | undefined;
+  const updatedUnjustified = member.unjustifiedAbsences.filter(a => {
+    if (a.id === absenceId || a.shiftId === shiftId) {
+      if (a.warningId) removedWarnId = a.warningId;
+      return false;
+    }
+    return true;
+  });
+
+  const updatedWarnings = member.warnings.filter(
+    w => w.id !== removedWarnId && w.id !== `w-${absenceId}` && !w.reason.includes(shiftId)
+  );
+
+  // Filtrar reposições pendentes vinculadas
+  const remainingReplacements = member.replacements.filter(
+    r => r.id !== replacementId && r.shiftId !== shiftId && r.absenceId !== absenceId
+  );
+
+  const draftMember: Member = {
+    ...member,
+    shifts: updatedShifts,
+    justifiedAbsences: updatedJustified,
+    unjustifiedAbsences: updatedUnjustified,
+    warnings: updatedWarnings,
+    accumulatedHours: Math.max(0, member.accumulatedHours - hoursToDeduct),
+    hoursUpdated: true,
+  };
+
+  return {
+    ...draftMember,
+    replacements: syncMemberReplacementsDeadlines(remainingReplacements, draftMember),
   };
 }
 

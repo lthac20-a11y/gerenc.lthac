@@ -10,7 +10,10 @@ import {
   TrendingUp,
   Users,
   Pencil,
-  X
+  X,
+  UserMinus,
+  CreditCard,
+  XCircle
 } from 'lucide-react';
 import { Member, LeagueConfig, RoleInLeague, MemberStatus } from '../types/league';
 import { 
@@ -35,6 +38,8 @@ interface MembersViewProps {
   onRequestDeleteMember?: (memberId: string) => void;
 }
 
+const isMemberBaixa = (m: Member) => Boolean(m.isBaixa || m.status === 'baixa');
+
 export const MembersView: React.FC<MembersViewProps> = ({
   members,
   config,
@@ -57,18 +62,22 @@ export const MembersView: React.FC<MembersViewProps> = ({
   const [editEmail, setEditEmail] = useState('');
   const [editStatus, setEditStatus] = useState<MemberStatus>('ativo');
 
-  // Compute certificate eligibility map
+  // Separate active and baixa members
+  const activeMembers = useMemo(() => members.filter(m => !isMemberBaixa(m)), [members]);
+  const baixaMembers = useMemo(() => members.filter(m => isMemberBaixa(m)), [members]);
+
+  // Compute certificate eligibility map for active members
   const eligibilitiesMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof checkCertificateEligibility>>();
-    members.forEach(m => {
+    activeMembers.forEach(m => {
       map.set(m.id, checkCertificateEligibility(m, config));
     });
     return map;
-  }, [members, config]);
+  }, [activeMembers, config]);
 
-  // Filter members
-  const filteredMembers = useMemo(() => {
-    return members.filter(member => {
+  // Filter active members
+  const filteredActiveMembers = useMemo(() => {
+    return activeMembers.filter(member => {
       const matchesSearch = 
         member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         member.role.toLowerCase().includes(searchTerm.toLowerCase());
@@ -101,12 +110,22 @@ export const MembersView: React.FC<MembersViewProps> = ({
       }
       return 0;
     });
-  }, [members, searchTerm, filterType, sortBy, config]);
+  }, [activeMembers, searchTerm, filterType, sortBy, config]);
 
-  // Statistics for top ribbon
-  const totalHours = members.reduce((acc, m) => acc + (m.accumulatedHours || 0), 0);
-  const eligibleCount = members.filter(m => isMemberEligibleForCertificate(m, config.minHoursForCertificate || 150)).length;
-  const pendingReplacementsCount = members.filter(m => m.replacements.some(r => !r.completed)).length;
+  // Filter baixa members
+  const filteredBaixaMembers = useMemo(() => {
+    return baixaMembers.filter(member => {
+      const matchesSearch = 
+        member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        member.role.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesSearch;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [baixaMembers, searchTerm]);
+
+  // Statistics for top ribbon based on active members
+  const totalHours = activeMembers.reduce((acc, m) => acc + (m.accumulatedHours || 0), 0);
+  const eligibleCount = activeMembers.filter(m => isMemberEligibleForCertificate(m, config.minHoursForCertificate || 150)).length;
+  const pendingReplacementsCount = activeMembers.filter(m => m.replacements.some(r => !r.completed)).length;
 
   return (
     <div className="space-y-4 sm:space-y-6 w-full max-w-full">
@@ -135,7 +154,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
         <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-slate-800/80 text-center">
           <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
             <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Total</span>
-            <span className="text-xs font-bold text-white font-mono">{members.length}</span>
+            <span className="text-xs font-bold text-white font-mono">{activeMembers.length}</span>
           </div>
 
           <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
@@ -145,7 +164,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
           <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
             <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Aptos</span>
-            <span className="text-xs font-bold text-white font-mono">{eligibleCount}/{members.length}</span>
+            <span className="text-xs font-bold text-white font-mono">{eligibleCount}/{activeMembers.length}</span>
           </div>
 
           <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
@@ -201,10 +220,10 @@ export const MembersView: React.FC<MembersViewProps> = ({
           {/* Botões de Filtro Ajustados */}
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full xl:w-auto flex-nowrap shrink-0">
             {[
-              { id: 'todos', label: 'Todos', count: members.length },
+              { id: 'todos', label: 'Todos', count: activeMembers.length },
               { id: 'aptos', label: 'Aptos', count: eligibleCount },
               { id: 'reposicoes', label: 'Reposição', count: pendingReplacementsCount },
-              { id: 'advertencias', label: 'Com ADV', count: members.filter(m => m.warnings.some(w => w.active)).length },
+              { id: 'advertencias', label: 'Com ADV', count: activeMembers.filter(m => m.warnings.some(w => w.active)).length },
             ].map((tab) => {
               const isActive = filterType === tab.id;
               return (
@@ -247,12 +266,12 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* MOBILE MEMBER CARDS (< 768px) - ULTRA COMPACT HIGH DENSITY VIEW */}
       <div className="block md:hidden space-y-2 sm:space-y-2.5 pb-20">
-        {filteredMembers.length === 0 ? (
+        {filteredActiveMembers.length === 0 ? (
           <div className="p-6 text-center text-slate-300 text-xs sm:text-sm bg-slate-900 border border-slate-800 rounded-xl">
-            Nenhum integrante encontrado com os filtros selecionados.
+            Nenhum integrante ativo encontrado com os filtros selecionados.
           </div>
         ) : (
-          filteredMembers.map((member) => {
+          filteredActiveMembers.map((member) => {
             const activeTime = calculateActiveTime(member.entryDate);
             const activeWarnings = member.warnings.filter(w => w.active).length;
             const fjCount = member.justifiedAbsences.length;
@@ -385,6 +404,127 @@ export const MembersView: React.FC<MembersViewProps> = ({
             );
           })
         )}
+
+        {/* Seção Baixas Mobile */}
+        {baixaMembers.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-slate-800/80 space-y-2.5">
+            <div className="flex items-center justify-between pb-1">
+              <div className="flex items-center gap-2">
+                <div className="p-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md">
+                  <UserMinus className="w-3.5 h-3.5" />
+                </div>
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-display">
+                  Baixas ({filteredBaixaMembers.length})
+                </h3>
+              </div>
+              <span className="text-[10px] text-slate-500 font-medium">Inativação reversível</span>
+            </div>
+
+            {filteredBaixaMembers.length === 0 ? (
+              <p className="text-xs text-slate-500 italic p-3 bg-slate-900/40 rounded-xl border border-slate-800/60 text-center">
+                Nenhum integrante em baixa encontrado na busca.
+              </p>
+            ) : (
+              filteredBaixaMembers.map((member) => {
+                const isApto = isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150);
+                const isCertEmitted = Boolean(member.certificateEmitted);
+                const isBadgeCollected = Boolean(member.badgeCollected);
+
+                return (
+                  <div
+                    key={member.id}
+                    onClick={() => onSelectMember(member)}
+                    className="opacity-90 bg-slate-900/60 border border-slate-800 hover:border-slate-700 rounded-xl p-2.5 sm:p-3 shadow-xs transition-all cursor-pointer space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="w-7 h-7 rounded-lg bg-slate-800/80 border border-slate-700/60 flex items-center justify-center font-bold text-xs text-slate-400 shrink-0 font-display">
+                          {member.name.charAt(0)}
+                        </div>
+                        <span className="font-bold text-slate-300 text-xs sm:text-sm truncate flex-1 min-w-0 font-display line-through decoration-slate-600">
+                          {member.name}
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30 shrink-0">
+                        <UserMinus className="w-2.5 h-2.5 text-rose-400" />
+                        <span>Baixa</span>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                      <span>Admissão: {member.entryDate}</span>
+                      <span className="text-emerald-400/90 font-bold">{member.accumulatedHours}h registradas</span>
+                    </div>
+
+                    {/* Controles de Saída / Encerramento */}
+                    <div className="pt-2 border-t border-slate-800/80 grid grid-cols-3 gap-1 text-[11px]" onClick={e => e.stopPropagation()}>
+                      {/* Aptidão */}
+                      <div className="flex items-center justify-center p-1 rounded-lg bg-slate-950 border border-slate-800/80">
+                        {isApto ? (
+                          <span className="text-emerald-400 font-bold text-[10px] flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Apto
+                          </span>
+                        ) : (
+                          <span className="text-rose-400 font-medium text-[10px] flex items-center gap-1">
+                            <XCircle className="w-3 h-3" /> Inapto
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Certificado */}
+                      <button
+                        type="button"
+                        disabled={!isCoordination || !onUpdateMember}
+                        onClick={() => {
+                          if (onUpdateMember) {
+                            onUpdateMember({
+                              ...member,
+                              certificateEmitted: !member.certificateEmitted,
+                            });
+                          }
+                        }}
+                        className={`p-1 rounded-lg border text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                          isCertEmitted
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                        } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                        title="Alternar emissão de certificado"
+                      >
+                        <Award className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{isCertEmitted ? 'Certificado ✓' : 'Cert. Pend.'}</span>
+                      </button>
+
+                      {/* Crachá */}
+                      <button
+                        type="button"
+                        disabled={!isCoordination || !onUpdateMember}
+                        onClick={() => {
+                          if (onUpdateMember) {
+                            const nextCollected = !member.badgeCollected;
+                            onUpdateMember({
+                              ...member,
+                              badgeCollected: nextCollected,
+                              badgeCollectedDate: nextCollected ? new Date().toISOString().split('T')[0] : undefined,
+                            });
+                          }
+                        }}
+                        className={`p-1 rounded-lg border text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                          isBadgeCollected
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                        } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                        title="Alternar devolução de crachá"
+                      >
+                        <CreditCard className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{isBadgeCollected ? 'Crachá ✓' : 'Crachá Pend.'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
 
       {/* SPREADSHEET TABLE (DESKTOP VIEW >= 768px) */}
@@ -404,14 +544,14 @@ export const MembersView: React.FC<MembersViewProps> = ({
             </thead>
 
             <tbody className="divide-y divide-slate-800/80 text-sm">
-              {filteredMembers.length === 0 ? (
+              {filteredActiveMembers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-16 text-center text-slate-300 text-base">
-                    Nenhum integrante encontrado com os filtros selecionados.
+                    Nenhum integrante ativo encontrado com os filtros selecionados.
                   </td>
                 </tr>
               ) : (
-                filteredMembers.map((member, index) => {
+                filteredActiveMembers.map((member, index) => {
                   const activeTime = calculateActiveTime(member.entryDate);
                   const activeWarnings = member.warnings.filter(w => w.active).length;
                   const fjCount = member.justifiedAbsences.length;
@@ -565,6 +705,139 @@ export const MembersView: React.FC<MembersViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* SPREADSHEET TABLE DE BAIXAS (DESKTOP VIEW >= 768px) */}
+      {baixaMembers.length > 0 && (
+        <div className="hidden md:block space-y-3 pt-2">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg">
+                <UserMinus className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider font-display">
+                Integrantes em Baixa ({filteredBaixaMembers.length})
+              </h3>
+            </div>
+            <span className="text-xs text-slate-500 font-medium">Inativação reversível • Histórico preservado</span>
+          </div>
+
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/80 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="py-3.5 px-4 text-left w-[24%]">Integrante Inativo</th>
+                    <th className="py-3.5 px-3 text-left w-[16%]">Admissão & Carga</th>
+                    <th className="py-3.5 px-3 text-center w-[14%]">Aptidão</th>
+                    <th className="py-3.5 px-3 text-center w-[23%]">Controle Certificado</th>
+                    <th className="py-3.5 px-3 text-center w-[23%]">Devolução Crachá</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-xs">
+                  {filteredBaixaMembers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-slate-500 italic">
+                        Nenhum integrante em baixa encontrado na busca.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredBaixaMembers.map((member) => {
+                      const isApto = isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150);
+                      const isCertEmitted = Boolean(member.certificateEmitted);
+                      const isBadgeCollected = Boolean(member.badgeCollected);
+
+                      return (
+                        <tr
+                          key={member.id}
+                          onClick={() => onSelectMember(member)}
+                          className="hover:bg-slate-800/40 transition-colors group cursor-pointer opacity-90 hover:opacity-100"
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs shrink-0 font-display">
+                                {member.name.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-bold text-slate-300 group-hover:text-emerald-400 transition-colors text-sm line-through decoration-slate-600 block truncate">
+                                  {member.name}
+                                </span>
+                                <span className="text-[10px] text-rose-400/90 font-semibold uppercase">Em Baixa</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 font-mono text-slate-300 whitespace-nowrap">
+                            <div className="text-xs">{member.entryDate}</div>
+                            <div className="text-emerald-400 font-bold">{member.accumulatedHours}h</div>
+                          </td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                            {isApto ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Apto ✓</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                <span>Inapto</span>
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              disabled={!isCoordination || !onUpdateMember}
+                              onClick={() => {
+                                if (onUpdateMember) {
+                                  onUpdateMember({
+                                    ...member,
+                                    certificateEmitted: !member.certificateEmitted,
+                                  });
+                                }
+                              }}
+                              className={`px-3 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                                isCertEmitted
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                              } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              <span>{isCertEmitted ? 'Cert. Emitido ✓' : 'Cert. Pendente'}</span>
+                            </button>
+                          </td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              disabled={!isCoordination || !onUpdateMember}
+                              onClick={() => {
+                                if (onUpdateMember) {
+                                  const nextCollected = !member.badgeCollected;
+                                  onUpdateMember({
+                                    ...member,
+                                    badgeCollected: nextCollected,
+                                    badgeCollectedDate: nextCollected ? new Date().toISOString().split('T')[0] : undefined,
+                                  });
+                                }
+                              }}
+                              className={`px-3 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                                isBadgeCollected
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                              } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                              <span>{isBadgeCollected ? 'Crachá Devolvido ✓' : 'Crachá Pendente'}</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Direct Edit Member Modal Dialog (Triggered by pencil on member cards/rows) */}
       {editingMember && (

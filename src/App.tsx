@@ -839,6 +839,7 @@ export default function App() {
           onClose={() => setSelectedMember(null)}
           onUpdateMember={handleUpdateMember}
           onDeleteMember={handleDeleteMember}
+          onOpenCertificateModal={(m) => setCertificateMember(m)}
         />
       )}
 

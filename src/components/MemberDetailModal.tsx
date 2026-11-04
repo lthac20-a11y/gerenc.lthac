@@ -1,125 +1,130 @@
 import React, { useState, useMemo } from 'react';
 import { 
   X, 
-  Calendar, 
   Clock, 
   AlertTriangle, 
-  Repeat, 
-  CheckCircle2, 
-  Plus, 
-  Trash2, 
-  ShieldAlert, 
-  Info,
-  RefreshCw,
-  Pencil,
-  Check,
-  ChevronLeft,
-  ChevronRight
+  Pencil, 
+  FileText,
+  User,
+  Trash2,
+  CheckCircle2,
+  UserMinus,
+  RotateCcw,
+  Award,
+  CreditCard,
+  XCircle
 } from 'lucide-react';
-import { Member, LeagueConfig, ShiftRecord, RoleInLeague, MemberStatus, ReplacementRecord, WarningRecord } from '../types/league';
-import { MONTH_COLUMNS } from '../data/initialData';
+import { Member, LeagueConfig, ShiftRecord, RoleInLeague, MemberStatus } from '../types/league';
 import { 
-  checkCertificateEligibility, 
   calculateActiveTime, 
-  calculateReplacementDeadline,
-  syncMemberReplacementsDeadlines,
-  completeReplacementAndDismissAbsence,
-  deleteReplacementWithCascade
+  parseDateToShiftParts,
+  updateOrAddMemberShift,
+  deleteMemberShift,
+  isMemberEligibleForCertificate
 } from '../utils/leagueCalculations';
+import { ShiftModal } from './ShiftModal';
 import { 
+  getCurrentYear, 
   parseMonthKey, 
-  formatFullMonthYear, 
-  getReplacementDeadlineInfo,
-  formatReferenceMonthYear,
-  formatNumericMonthYear,
-  getCurrentYear,
-  getCurrentMonthIndex,
-  formatMonthKey,
-  FULL_MONTH_NAMES
+  formatFullMonthYear 
 } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
-import { QuickReplacementModal, QuickWarningModal } from './CoordinationModals';
-import { CustomDatePicker } from './CustomDatePicker';
 
-interface MemberDetailModalProps {
+export interface MemberDetailModalProps {
   member: Member;
   config: LeagueConfig;
   onClose: () => void;
-  onUpdateMember: (updated: Member) => void;
-  onDeleteMember: (id: string) => void;
+  onOpenCertificateModal?: (member: Member) => void;
+  onUpdateMember?: (updated: Member) => void;
+  onDeleteMember?: (id: string) => void;
+}
+
+function parseShiftDateToTimestamp(dateStr: string): number {
+  if (!dateStr) return 0;
+  const clean = dateStr.trim();
+  if (clean.includes('-')) {
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      return new Date(y, m, d).getTime();
+    }
+  }
+  if (clean.includes('/')) {
+    const parts = clean.split('/');
+    if (parts.length === 3) {
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      let y = parseInt(parts[2], 10);
+      if (y < 100) y += 2000;
+      return new Date(y, m, d).getTime();
+    } else if (parts.length === 2) {
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const y = getCurrentYear();
+      return new Date(y, m, d).getTime();
+    }
+  }
+  return 0;
+}
+
+function groupShiftsByMonth(shifts: ShiftRecord[]): Array<{
+  monthKey: string;
+  monthLabel: string;
+  totalHours: number;
+  latestTimestamp: number;
+  shifts: ShiftRecord[];
+}> {
+  const groupsMap = new Map<string, { monthLabel: string; totalHours: number; latestTimestamp: number; shifts: ShiftRecord[] }>();
+
+  shifts.forEach(shift => {
+    const parts = parseDateToShiftParts(shift.date, shift.monthKey);
+    const mKey = parts.monthKey || shift.monthKey || 'out/26';
+    const { monthIndex, year } = parseMonthKey(mKey);
+    const monthLabel = formatFullMonthYear(monthIndex, year).toUpperCase();
+    const ts = parseShiftDateToTimestamp(shift.date);
+
+    if (!groupsMap.has(mKey)) {
+      groupsMap.set(mKey, {
+        monthLabel,
+        totalHours: 0,
+        latestTimestamp: ts,
+        shifts: []
+      });
+    }
+
+    const group = groupsMap.get(mKey)!;
+    group.shifts.push(shift);
+    group.totalHours += (shift.hours || 0);
+    if (ts > group.latestTimestamp) {
+      group.latestTimestamp = ts;
+    }
+  });
+
+  groupsMap.forEach(group => {
+    group.shifts.sort((a, b) => parseShiftDateToTimestamp(b.date) - parseShiftDateToTimestamp(a.date));
+  });
+
+  return Array.from(groupsMap.entries()).map(([monthKey, val]) => ({
+    monthKey,
+    ...val
+  })).sort((a, b) => b.latestTimestamp - a.latestTimestamp);
 }
 
 export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   member,
   config,
   onClose,
+  onOpenCertificateModal,
   onUpdateMember,
   onDeleteMember,
 }) => {
   const { isCoordination } = useAuth();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editingShift, setEditingShift] = useState<ShiftRecord | null>(null);
 
-  // Form states for Shift (Unified Date Picker YYYY-MM-DD -> DD/MM + monthKey)
-  const [newShiftFullDate, setNewShiftFullDate] = useState(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  });
-
-  const parseFullDateToShiftParts = (isoDate: string): { dayMonth: string; monthKey: string } => {
-    const parts = isoDate.split('-');
-    if (parts.length === 3) {
-      const [yearStr, monthStr, dayStr] = parts;
-      const monthIdx = Math.max(0, Math.min(11, parseInt(monthStr, 10) - 1));
-      const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-      const shortYear = yearStr.slice(-2) || String(new Date().getFullYear()).slice(-2);
-      return {
-        dayMonth: `${dayStr}/${monthStr}`,
-        monthKey: `${monthNames[monthIdx]}/${shortYear}`,
-      };
-    }
-    const today = new Date();
-    const dayStr = String(today.getDate()).padStart(2, '0');
-    const monthStr = String(today.getMonth() + 1).padStart(2, '0');
-    const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-    const shortYear = String(today.getFullYear()).slice(-2);
-    return { dayMonth: `${dayStr}/${monthStr}`, monthKey: `${monthNames[today.getMonth()]}/${shortYear}` };
-  };
-
-  const { dayMonth: newShiftDate, monthKey: newShiftMonth } = parseFullDateToShiftParts(newShiftFullDate);
-  const [newShiftHours, setNewShiftHours] = useState(12);
-
-  // Sub-modals for Replacements, Warnings & Monthly Absence Registration inside MemberDetailModal
-  const [editingRep, setEditingRep] = useState<ReplacementRecord | null>(null);
-  const [editingWarn, setEditingWarn] = useState<WarningRecord | null>(null);
-  const [confirmDeleteMember, setConfirmDeleteMember] = useState(false);
-  const [absenceModalType, setAbsenceModalType] = useState<'falta_justificada' | 'falta_injustificada' | null>(null);
-  const [absenceModalMonthKey, setAbsenceModalMonthKey] = useState(() =>
-    formatMonthKey(getCurrentMonthIndex(), getCurrentYear())
-  );
-
-  const { monthIndex: selectedAbsenceMonthIdx, year: selectedAbsenceYear } = parseMonthKey(absenceModalMonthKey);
-
-  const handleSelectAbsenceMonthYear = (mIdx: number, yr: number) => {
-    setAbsenceModalMonthKey(formatMonthKey(mIdx, yr));
-  };
-
-  // Edit Shift State
-  const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
-  const [editShiftFullDate, setEditShiftFullDate] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  });
-  const [editShiftHours, setEditShiftHours] = useState(12);
-
-  // Repositions completion dates states
-  const [completionDates, setCompletionDates] = useState<Record<string, string>>({});
-  const [editingDates, setEditingDates] = useState<Record<string, string>>({});
-  const [isEditingDateId, setIsEditingDateId] = useState<string | null>(null);
-
-  // Edit member states
+  // Edit member form states
   const [editName, setEditName] = useState(member.name);
   const [editRole, setEditRole] = useState<RoleInLeague>(member.role === 'Coordenação' ? 'Coordenação' : 'Ligante');
   const [editStatus, setEditStatus] = useState<MemberStatus>(member.status);
@@ -127,588 +132,29 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   const [editHours, setEditHours] = useState(member.accumulatedHours);
   const [editEmail, setEditEmail] = useState(member.email || '');
 
-  // Feedback banner state
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  // Active time calculation
+  const activeTime = useMemo(() => calculateActiveTime(member.entryDate), [member.entryDate]);
+  const tenureDaysPercent = Math.min(100, Math.round((activeTime.totalDays / 365) * 100));
+  const isOneYear = activeTime.totalDays >= 365 || activeTime.totalMonths >= 12;
 
-  const showFeedback = (msg: string) => {
-    setActionNotice(msg);
-    setTimeout(() => {
-      setActionNotice(null);
-    }, 4000);
-  };
+  // Active pending replacements
+  const pendingReplacements = useMemo(() => {
+    return (member.replacements || []).filter(r => !r.completed);
+  }, [member.replacements]);
 
-  const eligibility = checkCertificateEligibility(member, config);
-  const activeTime = calculateActiveTime(member.entryDate);
+  // Active warnings count
+  const activeWarningsCount = useMemo(() => {
+    return (member.warnings || []).filter(w => w.active).length;
+  }, [member.warnings]);
 
-  // Count pending replacements
-  const currentPendingReplacements = member.replacements.filter(r => !r.completed).length;
-
-  // Group member shifts by monthKey for organized visual blocks (Sorted descending chronological)
+  // Grouped shifts
   const groupedShifts = useMemo(() => {
-    const groups: { monthKey: string; shifts: ShiftRecord[]; timestamp: number }[] = [];
-    member.shifts.forEach(shift => {
-      const key = shift.monthKey || 'out/26';
-      const existingGroup = groups.find(g => g.monthKey === key);
-      if (existingGroup) {
-        existingGroup.shifts.push(shift);
-      } else {
-        const { monthIndex, year } = parseMonthKey(key);
-        const timestamp = year * 100 + monthIndex;
-        groups.push({ monthKey: key, shifts: [shift], timestamp });
-      }
-    });
-
-    // Sort month groups strictly descending (newest month first: ABRIL/2026 above FEVEREIRO/2026)
-    groups.sort((a, b) => b.timestamp - a.timestamp);
-
-    // Sort shifts within each month group descending by day number
-    groups.forEach(group => {
-      group.shifts.sort((a, b) => {
-        const parseDay = (dStr: string) => {
-          if (!dStr) return 0;
-          if (dStr.includes('/')) return parseInt(dStr.split('/')[0], 10) || 0;
-          if (dStr.includes('-')) return parseInt(dStr.split('-')[2], 10) || 0;
-          return 0;
-        };
-        return parseDay(b.date) - parseDay(a.date);
-      });
-    });
-
-    return groups;
+    return groupShiftsByMonth(member.shifts || []);
   }, [member.shifts]);
 
-  const formatShiftDateToIso = (dateStr: string, monthKey?: string): string => {
-    const currentFullYear = String(new Date().getFullYear());
-    if (!dateStr) return `${currentFullYear}-01-01`;
-    if (dateStr.includes('-') && dateStr.split('-').length === 3) {
-      return dateStr;
-    }
-    if (dateStr.includes('/')) {
-      const parts = dateStr.split('/');
-      if (parts.length === 3) {
-        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-      }
-      if (parts.length === 2) {
-        let year = currentFullYear;
-        const month = parts[1];
-        if (monthKey && monthKey.includes('/')) {
-          const shortY = monthKey.split('/')[1];
-          year = shortY.length === 2 ? '20' + shortY : shortY;
-        }
-        return `${year}-${month.padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-      }
-    }
-    return `${currentFullYear}-01-01`;
-  };
-
-  // Handler: Start Editing Shift
-  const handleStartEditShift = (shift: ShiftRecord) => {
-    setEditingShiftId(shift.id);
-    setEditShiftFullDate(formatShiftDateToIso(shift.date, shift.monthKey));
-    setEditShiftHours(shift.hours || 12);
-  };
-
-  const handleCancelEditShift = () => {
-    setEditingShiftId(null);
-  };
-
-  const handleSaveEditShift = (e: React.FormEvent) => {
+  const handleSaveMemberProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingShiftId) return;
-
-    const oldShift = member.shifts.find(s => s.id === editingShiftId);
-    if (!oldShift) return;
-
-    const { dayMonth, monthKey } = parseFullDateToShiftParts(editShiftFullDate);
-    const newHours = Number(editShiftHours);
-    const oldHours = oldShift.hours || 0;
-    const diffHours = newHours - oldHours;
-
-    const updatedShifts = member.shifts.map(s => {
-      if (s.id === editingShiftId) {
-        return {
-          ...s,
-          date: dayMonth,
-          monthKey,
-          hours: newHours,
-          shiftStatus: 'concluido' as const,
-          description: s.description && !s.description.includes('Falta') ? s.description : 'Plantão Concluído',
-        };
-      }
-      return s;
-    });
-
-    onUpdateMember({
-      ...member,
-      shifts: updatedShifts,
-      accumulatedHours: Math.max(0, member.accumulatedHours + diffHours),
-      hoursUpdated: true,
-    });
-
-    setEditingShiftId(null);
-    showFeedback(`Escala atualizada para ${dayMonth} (${monthKey}) — ${newHours}h computadas!`);
-  };
-
-  // Handler: Delete Replacement (Eliminação Bidirecional 1:1 com Histórico de Escalas e Contadores)
-  const handleDeleteReplacement = (repId: string) => {
-    const { updatedMember, wasFNJ, wasFJ } = deleteReplacementWithCascade(member, repId);
-    onUpdateMember(updatedMember);
-
-    if (wasFNJ) {
-      showFeedback('Reposição pendente eliminada: registo no histórico removido, -1 REP, -1 FNJ e -1 Advertência.');
-    } else if (wasFJ) {
-      showFeedback('Reposição pendente eliminada: registo no histórico removido, -1 REP e -1 FJ.');
-    } else {
-      showFeedback('Reposição removida e histórico atualizado com sucesso!');
-    }
-  };
-
-  // Handler: Delete Warning Permanently
-  const handleDeleteWarning = (warnId: string) => {
-    onUpdateMember({
-      ...member,
-      warnings: member.warnings.filter(w => w.id !== warnId),
-    });
-    showFeedback('Advertência removida com sucesso!');
-  };
-
-  // Handler: Register Shift or Absence with Regimental Rules
-  const handleRegisterShiftWithStatus = (
-    targetStatus: 'concluido' | 'falta_justificada' | 'falta_injustificada',
-    customMonthKey?: string
-  ) => {
-    if (targetStatus === 'concluido') {
-      const newShift: ShiftRecord = {
-        id: `s-${Date.now()}`,
-        date: newShiftDate,
-        monthKey: newShiftMonth,
-        hours: Number(newShiftHours),
-        type: 'plantao',
-        shiftStatus: 'concluido',
-        description: 'Plantão Concluído',
-      };
-
-      onUpdateMember({
-        ...member,
-        shifts: [newShift, ...member.shifts],
-        accumulatedHours: member.accumulatedHours + Number(newShiftHours),
-        hoursUpdated: true,
-      });
-
-      showFeedback(`Plantão concluído registrado (+${newShiftHours}h adicionadas).`);
-
-    } else if (targetStatus === 'falta_justificada') {
-      const targetMonthKey = customMonthKey || absenceModalMonthKey || 'out/26';
-      const numericMonthRef = formatNumericMonthYear(targetMonthKey);
-      const fullMonthRef = formatReferenceMonthYear(targetMonthKey, targetMonthKey);
-
-      const absenceId = `ab-fj-${Date.now()}`;
-      const shiftId = `s-${Date.now()}`;
-      const replacementId = `rep-${Date.now()}`;
-
-      const existingArrayAbsences = [...member.justifiedAbsences, ...member.unjustifiedAbsences]
-        .filter(a => (a.monthKey || 'out/26') === targetMonthKey).length;
-      const existingShiftAbsences = member.shifts
-        .filter(s => (s.monthKey || 'out/26') === targetMonthKey && (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada')).length;
-      const currentAbsencesInMonth = Math.max(existingArrayAbsences, existingShiftAbsences) + 1;
-      const deadlineText = calculateReplacementDeadline(targetMonthKey, currentAbsencesInMonth);
-
-      const newAbsence: typeof member.justifiedAbsences[0] = {
-        id: absenceId,
-        date: numericMonthRef,
-        monthKey: targetMonthKey,
-        type: 'justificada',
-        reason: `Falta justificada — Mês de Referência: ${fullMonthRef}`,
-        requiresReplacement: true,
-        shiftId,
-        replacementId,
-      };
-
-      const newReplacement: ReplacementRecord = {
-        id: replacementId,
-        memberId: member.id,
-        absenceId,
-        shiftId,
-        faltaOrigemId: absenceId,
-        scheduledDate: 'A definir',
-        scheduledHours: Number(newShiftHours),
-        completed: false,
-        deadlineMonth: targetMonthKey,
-        deadlineDescription: deadlineText,
-        missedShiftDate: fullMonthRef,
-        notes: `Falta Justificada — Mês de Referência: ${fullMonthRef} (sem advertência, requer reposição). Prazo: ${deadlineText}`,
-        originalAbsenceCountInMonth: currentAbsencesInMonth >= 2 ? 2 : 1,
-      };
-
-      const newShift: ShiftRecord = {
-        id: shiftId,
-        date: numericMonthRef,
-        monthKey: targetMonthKey,
-        hours: 0,
-        type: 'plantao',
-        shiftStatus: 'falta_justificada',
-        description: 'Falta Justificada (sem advertência, requer reposição)',
-        absenceId,
-        replacementId,
-      };
-
-      const draftMember: Member = {
-        ...member,
-        shifts: [newShift, ...member.shifts],
-        justifiedAbsences: [newAbsence, ...member.justifiedAbsences],
-      };
-
-      const updatedReplacements = syncMemberReplacementsDeadlines([newReplacement, ...member.replacements], draftMember);
-
-      onUpdateMember({
-        ...draftMember,
-        replacements: updatedReplacements,
-      });
-
-      showFeedback(`Falta Justificada registrada para ${fullMonthRef} (Reposição: ${deadlineText}).`);
-
-    } else if (targetStatus === 'falta_injustificada') {
-      const targetMonthKey = customMonthKey || absenceModalMonthKey || 'out/26';
-      const numericMonthRef = formatNumericMonthYear(targetMonthKey);
-      const fullMonthRef = formatReferenceMonthYear(targetMonthKey, targetMonthKey);
-
-      const absenceId = `ab-fnj-${Date.now()}`;
-      const shiftId = `s-${Date.now()}`;
-      const replacementId = `rep-${Date.now()}`;
-      const warningId = `w-${Date.now()}`;
-
-      const existingArrayAbsences = [...member.justifiedAbsences, ...member.unjustifiedAbsences]
-        .filter(a => (a.monthKey || 'out/26') === targetMonthKey).length;
-      const existingShiftAbsences = member.shifts
-        .filter(s => (s.monthKey || 'out/26') === targetMonthKey && (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada')).length;
-      const currentAbsencesInMonth = Math.max(existingArrayAbsences, existingShiftAbsences) + 1;
-      const deadlineText = calculateReplacementDeadline(targetMonthKey, currentAbsencesInMonth);
-
-      const newWarning: WarningRecord = {
-        id: warningId,
-        date: numericMonthRef,
-        reason: `Advertência automática por falta não justificada — Mês de Referência: ${fullMonthRef}`,
-        severity: 'moderada',
-        active: true,
-      };
-
-      const newAbsence: typeof member.unjustifiedAbsences[0] = {
-        id: absenceId,
-        date: numericMonthRef,
-        monthKey: targetMonthKey,
-        type: 'injustificada',
-        reason: `Falta não justificada — Mês de Referência: ${fullMonthRef}`,
-        requiresReplacement: true,
-        shiftId,
-        replacementId,
-        warningId,
-      };
-
-      const newReplacement: ReplacementRecord = {
-        id: replacementId,
-        memberId: member.id,
-        absenceId,
-        shiftId,
-        faltaOrigemId: absenceId,
-        scheduledDate: 'A definir',
-        scheduledHours: Number(newShiftHours),
-        completed: false,
-        deadlineMonth: targetMonthKey,
-        deadlineDescription: deadlineText,
-        missedShiftDate: fullMonthRef,
-        notes: `Falta Não Justificada — Mês de Referência: ${fullMonthRef} (gerou 1 ADV e requer reposição). Prazo: ${deadlineText}`,
-        originalAbsenceCountInMonth: currentAbsencesInMonth >= 2 ? 2 : 1,
-      };
-
-      const newShift: ShiftRecord = {
-        id: shiftId,
-        date: numericMonthRef,
-        monthKey: targetMonthKey,
-        hours: 0,
-        type: 'plantao',
-        shiftStatus: 'falta_injustificada',
-        description: 'Falta Não Justificada (Gerou 1 ADV e 1 Reposição)',
-        absenceId,
-        replacementId,
-      };
-
-      const draftMember: Member = {
-        ...member,
-        shifts: [newShift, ...member.shifts],
-        warnings: [newWarning, ...member.warnings],
-        unjustifiedAbsences: [newAbsence, ...member.unjustifiedAbsences],
-      };
-
-      const updatedReplacements = syncMemberReplacementsDeadlines([newReplacement, ...member.replacements], draftMember);
-
-      onUpdateMember({
-        ...draftMember,
-        replacements: updatedReplacements,
-      });
-
-      showFeedback(`Falta Não Justificada registrada para ${fullMonthRef} (Gerou +1 ADV e 1 Reposição).`);
-    }
-  };
-
-  const handleAddShift = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleRegisterShiftWithStatus('concluido');
-  };
-
-  // Handler: Delete Shift with Full Cascade (Reversão Automática 1:1 ao Remover do Histórico)
-  const handleDeleteShift = (shiftId: string) => {
-    const shift = member.shifts.find(s => s.id === shiftId);
-    if (!shift) return;
-
-    // 1. Identify linked absence, replacement, or warning identifiers
-    const linkedAbsenceId = shift.absenceId;
-    const linkedReplacementId = shift.replacementId;
-
-    const linkedJustifiedAbsence = member.justifiedAbsences.find(
-      a => a.shiftId === shiftId || a.id === linkedAbsenceId || (a.date === shift.date && a.monthKey === shift.monthKey)
-    );
-    const linkedUnjustifiedAbsence = member.unjustifiedAbsences.find(
-      a => a.shiftId === shiftId || a.id === linkedAbsenceId || (a.date === shift.date && a.monthKey === shift.monthKey)
-    );
-
-    const actualAbsenceId = linkedAbsenceId || linkedJustifiedAbsence?.id || linkedUnjustifiedAbsence?.id;
-    const actualWarningId = linkedUnjustifiedAbsence?.warningId;
-
-    // 2. Reversal of Falta Justificada (strictly -1 FJ)
-    let fjRemoved = false;
-    const updatedJustified = member.justifiedAbsences.filter(a => {
-      if (fjRemoved) return true;
-      const isMatch = a.id === actualAbsenceId || a.shiftId === shiftId || (a.date === shift.date && a.monthKey === shift.monthKey);
-      if (isMatch && (shift.shiftStatus === 'falta_justificada' || shift.description?.includes('Falta Justificada'))) {
-        fjRemoved = true;
-        return false;
-      }
-      return a.id !== actualAbsenceId && a.shiftId !== shiftId;
-    });
-
-    // 3. Reversal of Falta Não Justificada (strictly -1 FNJ)
-    let fnjRemoved = false;
-    const updatedUnjustified = member.unjustifiedAbsences.filter(a => {
-      if (fnjRemoved) return true;
-      const isMatch = a.id === actualAbsenceId || a.shiftId === shiftId || (a.date === shift.date && a.monthKey === shift.monthKey);
-      if (isMatch && (shift.shiftStatus === 'falta_injustificada' || shift.description?.includes('Falta Não Justificada'))) {
-        fnjRemoved = true;
-        return false;
-      }
-      return a.id !== actualAbsenceId && a.shiftId !== shiftId;
-    });
-
-    // 4. Reversal of Reposição Pendente (strictly -1 Reposição Pendente by faltaOrigemId / absenceId / shiftId match)
-    const isAbsenceShift = shift.shiftStatus === 'falta_justificada' || 
-                           shift.shiftStatus === 'falta_injustificada' || 
-                           Boolean(shift.description?.includes('Falta'));
-
-    let repRemoved = false;
-    const updatedReplacementsRaw = member.replacements.filter(r => {
-      if (repRemoved) return true;
-      if (!isAbsenceShift) return true;
-
-      const isMatch = 
-        (linkedReplacementId && r.id === linkedReplacementId) ||
-        (actualAbsenceId && (r.faltaOrigemId === actualAbsenceId || r.absenceId === actualAbsenceId)) ||
-        (r.shiftId === shiftId) ||
-        (r.missedShiftDate && r.missedShiftDate.includes(shift.date) && (!shift.monthKey || r.deadlineMonth === shift.monthKey || r.notes?.includes(shift.date)) && !r.completed);
-
-      if (isMatch) {
-        repRemoved = true;
-        return false; // Remove strictly 1 replacement that matches this absence!
-      }
-      return true;
-    });
-
-    const updatedReplacements = syncMemberReplacementsDeadlines(updatedReplacementsRaw, member);
-
-    // 5. Reversal of Advertência (strictly -1 ADV for FNJ)
-    let warningRemoved = false;
-    let updatedWarnings = member.warnings;
-    if (shift.shiftStatus === 'falta_injustificada' || shift.description?.includes('Falta Não Justificada')) {
-      updatedWarnings = member.warnings.filter(w => {
-        if (warningRemoved) return true;
-        const isMatch = (actualWarningId && w.id === actualWarningId) || (w.reason && w.reason.includes(shift.date));
-        if (isMatch) {
-          warningRemoved = true;
-          return false;
-        }
-        return true;
-      });
-    }
-
-    // 6. Deduct hours for regular completed shifts
-    const hoursToDeduct = (shift.shiftStatus === 'concluido' || !shift.shiftStatus || shift.type === 'plantao') && shift.hours ? shift.hours : 0;
-
-    // 7. Update member state immediately
-    const updatedShifts = member.shifts.filter(s => s.id !== shiftId);
-
-    onUpdateMember({
-      ...member,
-      shifts: updatedShifts,
-      accumulatedHours: Math.max(0, member.accumulatedHours - hoursToDeduct),
-      justifiedAbsences: updatedJustified,
-      unjustifiedAbsences: updatedUnjustified,
-      replacements: updatedReplacements,
-      warnings: updatedWarnings,
-    });
-
-    if (shift.shiftStatus === 'falta_justificada') {
-      showFeedback('Falta Justificada removida: -1 FJ e reposição pendente excluída automaticamente.');
-    } else if (shift.shiftStatus === 'falta_injustificada') {
-      showFeedback('Falta Não Justificada removida: -1 FNJ, reposição pendente e advertência excluídas automaticamente.');
-    } else {
-      showFeedback('Plantão removido do histórico com sucesso!');
-    }
-  };
-
-  // Handler: Delete Absence directly from Faltas Tab
-  const handleDeleteAbsence = (absenceId: string, type: 'justificada' | 'injustificada') => {
-    const targetAbs = (type === 'justificada' ? member.justifiedAbsences : member.unjustifiedAbsences)
-      .find(a => a.id === absenceId);
-    if (!targetAbs) return;
-
-    const updatedJustified = member.justifiedAbsences.filter(a => a.id !== absenceId);
-    const updatedUnjustified = member.unjustifiedAbsences.filter(a => a.id !== absenceId);
-
-    const updatedShifts = member.shifts.filter(
-      s => s.absenceId !== absenceId && s.id !== targetAbs.shiftId && !(s.date === targetAbs.date && s.monthKey === targetAbs.monthKey && s.hours === 0)
-    );
-
-    const updatedReplacements = syncMemberReplacementsDeadlines(
-      member.replacements.filter(
-        r => r.absenceId !== absenceId && r.id !== targetAbs.replacementId && !(r.missedShiftDate?.includes(targetAbs.date) && !r.completed)
-      ),
-      member
-    );
-
-    let updatedWarnings = member.warnings;
-    if (type === 'injustificada') {
-      updatedWarnings = member.warnings.filter(
-        w => w.id !== targetAbs.warningId && !w.reason.includes(targetAbs.date)
-      );
-    }
-
-    onUpdateMember({
-      ...member,
-      justifiedAbsences: updatedJustified,
-      unjustifiedAbsences: updatedUnjustified,
-      shifts: updatedShifts,
-      replacements: updatedReplacements,
-      warnings: updatedWarnings,
-    });
-
-    showFeedback('Registro de falta removido com sucesso!');
-  };
-
-  // Handler: Clean Duplicate Absences
-  const handleCleanDuplicateAbsences = () => {
-    const seen = new Set<string>();
-    const uniqueJustified: typeof member.justifiedAbsences = [];
-    member.justifiedAbsences.forEach(a => {
-      const key = `${a.date}-${a.monthKey || 'out/26'}-${a.type}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        uniqueJustified.push(a);
-      }
-    });
-
-    const uniqueUnjustified: typeof member.unjustifiedAbsences = [];
-    member.unjustifiedAbsences.forEach(a => {
-      const key = `${a.date}-${a.monthKey || 'out/26'}-${a.type}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        uniqueUnjustified.push(a);
-      }
-    });
-
-    onUpdateMember({
-      ...member,
-      justifiedAbsences: uniqueJustified,
-      unjustifiedAbsences: uniqueUnjustified,
-    });
-
-    showFeedback('Faltas duplicadas removidas com sucesso!');
-  };
-
-  // Handler: Complete Replacement (Transforma falta no Histórico em Plantão de Reposição Concluído e deduz -1 falta)
-  const handleCompleteReplacement = (repId: string, customDate?: string) => {
-    const rep = member.replacements.find(r => r.id === repId);
-    if (!rep) return;
-
-    const finalDate = customDate && customDate.trim() ? customDate.trim() : new Date().toLocaleDateString('pt-BR');
-    const { updatedMember, dismissedAbsence, hoursAdded } = completeReplacementAndDismissAbsence(member, repId, finalDate);
-
-    onUpdateMember(updatedMember);
-
-    if (dismissedAbsence) {
-      showFeedback(`Reposição concluída (${finalDate})! Registo transformado no histórico em "Plantão de Reposição Concluído" (+${hoursAdded}h) e -1 falta deduzida.`);
-    } else {
-      showFeedback(`Reposição concluída (${finalDate})! +${hoursAdded}h creditadas no histórico.`);
-    }
-  };
-
-  // Handler: Edit / Update completion date for an already completed replacement
-  const handleSaveCompletedDate = (repId: string, newDate: string) => {
-    if (!newDate.trim()) return;
-    const updated = member.replacements.map(r => {
-      if (r.id === repId) {
-        return {
-          ...r,
-          completedDate: newDate.trim(),
-        };
-      }
-      return r;
-    });
-
-    onUpdateMember({
-      ...member,
-      replacements: updated,
-    });
-    setIsEditingDateId(null);
-    showFeedback('Data de reposição atualizada!');
-  };
-
-  // Handler: Issue Warning for Late / Overdue Replacement
-  const handleIssueWarningForLateReplacement = (repId: string) => {
-    const rep = member.replacements.find(r => r.id === repId);
-    if (!rep) return;
-
-    const today = new Date().toLocaleDateString('pt-BR');
-    const newWarning: WarningRecord = {
-      id: `w-${Date.now()}`,
-      date: today,
-      reason: `Advertência por descumprimento do prazo regimental para reposição do plantão (${rep.missedShiftDate || 'escala pendente'})`,
-      severity: 'grave',
-      active: true,
-    };
-
-    const updatedReplacements = member.replacements.map(r => 
-      r.id === repId ? { ...r, warningIssuedForDelay: true } : r
-    );
-
-    onUpdateMember({
-      ...member,
-      warnings: [newWarning, ...member.warnings],
-      replacements: updatedReplacements,
-    });
-
-    showFeedback('Advertência disciplinar aplicada por atraso na reposição!');
-  };
-
-  // Handler: Toggle/Revoke Warning
-  const handleToggleWarning = (warnId: string) => {
-    onUpdateMember({
-      ...member,
-      warnings: member.warnings.map(w => w.id === warnId ? { ...w, active: !w.active } : w),
-    });
-    showFeedback('Status da advertência alterado com sucesso!');
-  };
-
-  // Handler: Save Basic Member Info
-  const handleSaveMemberInfo = (e: React.FormEvent) => {
-    e.preventDefault();
+    if (!onUpdateMember) return;
     onUpdateMember({
       ...member,
       name: editName,
@@ -718,880 +164,519 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
       accumulatedHours: Number(editHours),
       email: editEmail,
     });
-    showFeedback('Dados do cadastro atualizados com sucesso!');
+    setIsEditingProfile(false);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-6 overflow-y-auto">
-      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl w-full max-w-full md:max-w-4xl max-h-[100dvh] sm:max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-fadeIn">
+      <div className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full shadow-2xl flex flex-col overflow-hidden animate-slideLeft">
         
-        {/* Header with Member Overview */}
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-3 sm:p-4 border-b border-slate-800 relative shrink-0">
-          {/* Top Right Actions: Edit Member + Close button */}
-          <div className="absolute top-2.5 right-2.5 sm:top-3.5 sm:right-3.5 flex items-center gap-1.5 z-10">
-            {isCoordination && (
+        {/* 1. CABEÇALHO E IDENTIFICAÇÃO */}
+        <div className="p-5 border-b border-slate-800 bg-slate-950/80 relative shrink-0">
+          <div className="absolute top-4 right-4 flex items-center gap-1.5">
+            {isCoordination && onUpdateMember && (
               <button
                 type="button"
                 onClick={() => setIsEditingProfile(true)}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-emerald-500/40 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                 title="Editar cadastro do integrante"
               >
-                <Pencil className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden sm:inline">Editar Cadastro</span>
+                <Pencil className="w-4 h-4 text-emerald-400" />
               </button>
             )}
-
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors cursor-pointer"
-              title="Fechar ficha"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              title="Fechar painel"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-2.5 pr-28 sm:pr-40 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-teal-500/20 font-display shrink-0">
+          <div className="flex items-center gap-2.5 pr-20 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-teal-500/20 shrink-0 font-display">
               {member.name.charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm sm:text-base font-bold text-white tracking-tight truncate font-display">{member.name}</h2>
-              <p className="text-xs text-slate-400 mt-0.5 font-mono truncate">
-                Adm: {member.entryDate} • {activeTime.formatted.replace(' de atividade contínua', ' ativo').replace(' de atividade', ' ativo')}
-              </p>
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-tight break-words font-display">
+                {member.name}
+              </h3>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[11px] text-slate-400 font-mono">
+                  Admissão: {member.entryDate}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Barra Única de Indicadores (5 Métricas em 1 Linha) */}
-          <div className="grid grid-cols-5 gap-1.5 mt-3 pt-2.5 border-t border-slate-800/80 text-center">
-            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">HORAS</span>
-              <span className="font-bold text-white font-mono text-xs block mt-0.5 truncate">
-                {member.accumulatedHours}h/{config.minHoursForCertificate}h
-              </span>
+          {/* 2. BARRAS DE PROGRESSO DE HORAS E TEMPO */}
+          <div className="mt-2.5 pt-2 border-t border-slate-800/80 space-y-1.5">
+            {/* Progresso de Horas */}
+            <div>
+              <div className="flex items-center justify-between text-[11px] mb-0.5">
+                <span className="text-slate-400">Progresso de Horas ({config.minHoursForCertificate}h):</span>
+                <span className="font-mono font-bold text-emerald-400">
+                  {member.accumulatedHours}h / {config.minHoursForCertificate}h ({Math.min(100, Math.round((member.accumulatedHours / config.minHoursForCertificate) * 100))}%)
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden border border-slate-700/60">
+                <div 
+                  className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, (member.accumulatedHours / config.minHoursForCertificate) * 100)}%` }}
+                />
+              </div>
             </div>
 
-            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">FJ</span>
-              <span className="font-bold text-blue-400 font-mono text-xs block mt-0.5">
-                {member.justifiedAbsences.length}
-              </span>
-            </div>
-
-            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">FNJ</span>
-              <span className={`font-bold font-mono text-xs block mt-0.5 ${member.unjustifiedAbsences.length > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
-                {member.unjustifiedAbsences.length}
-              </span>
-            </div>
-
-            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">REP</span>
-              <span className={`font-bold font-mono text-xs block mt-0.5 ${currentPendingReplacements > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
-                {currentPendingReplacements}
-              </span>
-            </div>
-
-            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">ADV</span>
-              <span className={`font-bold font-mono text-xs block mt-0.5 ${member.warnings.filter(w => w.active).length > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
-                {member.warnings.filter(w => w.active).length}
-              </span>
+            {/* Tempo de Admissão */}
+            <div>
+              <div className="flex items-center justify-between text-[11px] mb-0.5">
+                <span className="text-slate-400">Tempo de Admissão (1 ano):</span>
+                <span className="font-mono font-bold text-blue-400">
+                  {isOneYear ? '1 ano completo ✓' : `${activeTime.formatted} (${tenureDaysPercent}%)`}
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden border border-slate-700/60">
+                <div 
+                  className="h-full rounded-full transition-all duration-300 bg-blue-500"
+                  style={{ width: `${tenureDaysPercent}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Action Feedback Notice */}
-        {actionNotice && (
-          <div className="bg-emerald-950/80 border-b border-emerald-800/60 text-emerald-300 px-4 py-2 text-xs flex items-center justify-between shrink-0 animate-fadeIn">
-            <span className="flex items-center gap-1.5 font-medium">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              {actionNotice}
-            </span>
-            <button 
-              type="button" 
-              onClick={() => setActionNotice(null)}
-              className="text-emerald-400 hover:text-white text-xs cursor-pointer"
-            >
-              ✕
-            </button>
+        {/* 3. CORPO DO MODAL (SCROLLABLE) */}
+        <div className="p-3.5 sm:p-4 overflow-y-auto flex-1 space-y-4 text-xs text-slate-300">
+          
+          {/* GRID DE INDICADORES PADRONIZADO EM 4 CARDS */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center">
+            <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Horas</span>
+              <span className="text-sm font-bold text-white font-mono">{member.accumulatedHours}h</span>
+            </div>
+
+            <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Plantões</span>
+              <span className="text-sm font-bold text-emerald-400 font-mono">{(member.shifts || []).length}</span>
+            </div>
+
+            <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Faltas</span>
+              <div className="flex items-center justify-center gap-1.5 text-xs font-mono font-bold mt-0.5">
+                <span className="text-blue-400">{(member.justifiedAbsences || []).length} FJ</span>
+                <span className="text-slate-600">|</span>
+                <span className={(member.unjustifiedAbsences || []).length > 0 ? 'text-rose-400' : 'text-slate-400'}>
+                  {(member.unjustifiedAbsences || []).length} FNJ
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Advertências</span>
+              <span className={`text-sm font-bold font-mono block mt-0.5 ${
+                activeWarningsCount > 0 ? 'text-rose-400' : 'text-slate-400'
+              }`}>
+                {activeWarningsCount} ADV
+              </span>
+            </div>
           </div>
-        )}
 
-        {/* Modal Body with unified single-view content */}
-        <div className="p-3.5 sm:p-4 overflow-y-auto flex-1 min-h-0 space-y-4 text-xs text-slate-300">
-          <div className="space-y-3.5">
-              {/* Add Shift Form (Coordination Only) - Ultra Compact */}
-              {isCoordination && (
-                <form onSubmit={handleAddShift} className="p-3 bg-slate-800/50 border border-slate-700/60 rounded-xl space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white text-xs flex items-center gap-1.5">
-                      <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                      Lançar Plantão na Escala
+          {/* CONTROLES DE SAÍDA / ENCERRAMENTO (Exibido para integrantes em Baixa) */}
+          {Boolean(member.isBaixa || member.status === 'baixa') && (
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5 my-2">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-800/80">
+                <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider font-display flex items-center gap-1.5">
+                  <UserMinus className="w-3.5 h-3.5" />
+                  Controles de Encerramento de Ciclo
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">Baixa Registrada</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1.5 text-center">
+                {/* 1. Aptidão */}
+                <div className="p-2 bg-slate-900 border border-slate-800/80 rounded-lg flex flex-col items-center justify-center">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold mb-1 truncate w-full">Aptidão</span>
+                  {isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150) ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      <span>Apto ✓</span>
                     </span>
-                  </div>
-
-                  {/* Campos lado a lado */}
-                  <div className="grid grid-cols-2 gap-2.5 items-end">
-                    <div>
-                      <CustomDatePicker
-                        label="Data do Plantão"
-                        required
-                        value={newShiftFullDate}
-                        onChange={val => setNewShiftFullDate(val)}
-                        format="ISO"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Carga Horária *</label>
-                      <select
-                        value={newShiftHours}
-                        onChange={e => setNewShiftHours(Number(e.target.value))}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none min-h-[34px]"
-                      >
-                        <option value={12}>12 horas (Padrão)</option>
-                        <option value={6}>6 horas</option>
-                        <option value={4}>4 horas (Aula/Reunião)</option>
-                        <option value={24}>24 horas (Duplo)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Botão de Salvar */}
-                  <button
-                    type="submit"
-                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5 active:scale-[0.99]"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Salvar Plantão</span>
-                  </button>
-
-                  {/* Botões Secundários Lançar Falta Lado a Lado */}
-                  <div className="grid grid-cols-2 gap-2 pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAbsenceModalMonthKey(formatMonthKey(getCurrentMonthIndex(), getCurrentYear()));
-                        setAbsenceModalType('falta_justificada');
-                      }}
-                      className="w-full py-1.5 px-2 bg-blue-950/40 hover:bg-blue-900/50 border border-blue-500/40 text-blue-300 font-semibold rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 active:scale-[0.99]"
-                    >
-                      <Info className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      <span>+ Falta Justif. (FJ)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAbsenceModalMonthKey(formatMonthKey(getCurrentMonthIndex(), getCurrentYear()));
-                        setAbsenceModalType('falta_injustificada');
-                      }}
-                      className="w-full py-1.5 px-2 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/40 text-rose-300 font-semibold rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 active:scale-[0.99]"
-                    >
-                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                      <span>+ Falta Não Justif. (FNJ)</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Pending Replacements Section (Interactive Real-Time Queue) */}
-              {member.replacements.filter(r => !r.completed).length > 0 && (
-                <div className="space-y-2.5 pt-1">
-                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <Repeat className="w-4 h-4 text-amber-400" />
-                      <h4 className="font-bold text-white text-sm font-display">
-                        Reposições Pendentes ({member.replacements.filter(r => !r.completed).length})
-                      </h4>
-                    </div>
-                    <span className="text-[11px] text-amber-300/90 font-medium">
-                      Concluir transforma a falta no histórico • Apagar reverte a falta original
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                      <XCircle className="w-3 h-3 text-rose-400" />
+                      <span>Inapto</span>
                     </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {member.replacements
-                      .filter(r => !r.completed)
-                      .map(rep => {
-                        const originMonth = rep.deadlineMonth || 'out/26';
-                        const totalJustifiedInMonth = member.justifiedAbsences.filter(a => (a.monthKey || 'out/26') === originMonth).length;
-                        const totalUnjustifiedInMonth = member.unjustifiedAbsences.filter(a => (a.monthKey || 'out/26') === originMonth).length;
-                        const totalShiftsAbsencesInMonth = member.shifts.filter(
-                          s => (s.monthKey || 'out/26') === originMonth && (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada' || s.description?.includes('Falta'))
-                        ).length;
-
-                        const absencesInSameMonth = Math.max(
-                          rep.originalAbsenceCountInMonth || 1,
-                          totalJustifiedInMonth + totalUnjustifiedInMonth,
-                          totalShiftsAbsencesInMonth
-                        );
-
-                        const { deadlineText, isOverdue } = getReplacementDeadlineInfo(
-                          originMonth,
-                          absencesInSameMonth,
-                          rep.fixedDeadlineMonthKey
-                        );
-
-                        return (
-                          <div
-                            key={rep.id}
-                            className={`p-3 sm:p-3.5 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
-                              isOverdue
-                                ? 'bg-rose-950/20 border-rose-500/50'
-                                : 'bg-slate-800/40 border-amber-500/30'
-                            }`}
-                          >
-                            <div className="space-y-1 min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                                  isOverdue
-                                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                                }`}>
-                                  {isOverdue ? 'Pendência Expirada' : 'Reposição Pendente'}
-                                </span>
-
-                                <span className="font-mono font-bold text-emerald-400 text-xs flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {rep.scheduledHours || 12}h
-                                </span>
-
-                                <span className="text-slate-300 text-xs font-mono break-words">
-                                  Mês de Referência: <strong>{formatReferenceMonthYear(rep.missedShiftDate, rep.deadlineMonth || 'out/26')}</strong>
-                                </span>
-                              </div>
-
-                              <div className="text-xs break-words">
-                                {isOverdue ? (
-                                  <span className="text-rose-300 font-semibold">
-                                    ⚠️ Prazo Expirado - Sujeito a Advertência ({deadlineText})
-                                  </span>
-                                ) : (
-                                  <span className="text-amber-300 font-semibold">
-                                    {deadlineText}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {isCoordination && (
-                              <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800/80 shrink-0">
-                                <div className="flex items-center gap-2 flex-1 sm:flex-none justify-between sm:justify-start">
-                                  <span className="text-[11px] text-slate-300 whitespace-nowrap font-medium">Data feita:</span>
-                                  <div className="w-full sm:w-36">
-                                    <CustomDatePicker
-                                      value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
-                                      onChange={val => setCompletionDates(prev => ({ ...prev, [rep.id]: val }))}
-                                      format="BR"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleCompleteReplacement(
-                                        rep.id,
-                                        completionDates[rep.id] || new Date().toLocaleDateString('pt-BR')
-                                      )
-                                    }
-                                    className="flex-1 sm:flex-none min-h-[42px] sm:min-h-[36px] inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow transition-colors cursor-pointer whitespace-nowrap active:scale-[0.99]"
-                                  >
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Concluir (+{rep.scheduledHours || 12}h)</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteReplacement(rep.id)}
-                                    className="min-h-[42px] min-w-[42px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-700/80 hover:border-rose-500/30 rounded-xl transition-colors cursor-pointer"
-                                    title="Eliminar reposição e reverter falta original"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
+                  )}
                 </div>
-              )}
 
-              {/* Shifts List Header */}
-              <div className="space-y-3 pt-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-emerald-400" />
-                    <h4 className="font-bold text-white text-sm font-display">
-                      Histórico de Escalas Realizadas ({member.shifts.length})
-                    </h4>
-                  </div>
-
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-mono font-bold rounded-xl self-start sm:self-auto">
-                    <span>Total computado:</span>
-                    <strong className="text-emerald-400">{member.accumulatedHours}h</strong>
+                {/* 2. Controle de Certificado */}
+                <button
+                  type="button"
+                  disabled={!isCoordination || !onUpdateMember}
+                  onClick={() => {
+                    if (onUpdateMember) {
+                      onUpdateMember({
+                        ...member,
+                        certificateEmitted: !member.certificateEmitted,
+                      });
+                    }
+                  }}
+                  className={`p-2 rounded-lg border flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 ${
+                    member.certificateEmitted
+                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+                  } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                >
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold mb-1 truncate w-full">Certificado</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold">
+                    <Award className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{member.certificateEmitted ? 'Emitido ✓' : 'Pendente'}</span>
                   </span>
-                </div>
+                </button>
 
-                {groupedShifts.length === 0 ? (
-                  <div className="text-center py-8 border border-dashed border-slate-800 rounded-xl bg-slate-900/40 p-4">
-                    <Calendar className="w-7 h-7 text-slate-600 mx-auto mb-1.5" />
-                    <p className="text-xs font-semibold text-slate-300">Nenhum plantão individual registrado na lista</p>
-                    <p className="text-[11px] text-slate-500 mt-1">Horas totais acumuladas no cadastro: {member.accumulatedHours}h</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6 pt-2">
-                    {groupedShifts.map(group => {
-                      const { monthIndex, year } = parseMonthKey(group.monthKey);
-                      const monthLabel = formatFullMonthYear(monthIndex, year);
+                {/* 3. Devolução de Crachá */}
+                <button
+                  type="button"
+                  disabled={!isCoordination || !onUpdateMember}
+                  onClick={() => {
+                    if (onUpdateMember) {
+                      const nextCollected = !member.badgeCollected;
+                      onUpdateMember({
+                        ...member,
+                        badgeCollected: nextCollected,
+                        badgeCollectedDate: nextCollected ? new Date().toISOString().split('T')[0] : undefined,
+                      });
+                    }
+                  }}
+                  className={`p-2 rounded-lg border flex flex-col items-center justify-center text-center transition-all cursor-pointer active:scale-95 ${
+                    member.badgeCollected
+                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+                  } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                >
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold mb-1 truncate w-full">Crachá</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold">
+                    <CreditCard className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{member.badgeCollected ? 'Devolvido ✓' : 'Pendente'}</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 4. SEÇÃO DE REPOSIÇÕES PENDENTES (BANNER AMARELO DE ALERTA) */}
+          {pendingReplacements.length > 0 && (
+            <div className="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl space-y-1 text-xs text-amber-200 mt-4 mb-5">
+              <div className="flex items-center gap-1.5 font-bold">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Reposições Pendentes ({pendingReplacements.length})</span>
+              </div>
+              {pendingReplacements.map(rep => (
+                <p key={rep.id} className="text-[11px] text-slate-300 pl-5">
+                  • Origem: {rep.missedShiftDate || 'Escala'} — Prazo: <strong>{rep.deadlineDescription || 'Mês seguinte'}</strong>
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* 5. HISTÓRICO DE PLANTÕES AGRUPADO POR MÊS */}
+          <div className="space-y-2 mt-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                Histórico de Plantões ({(member.shifts || []).length})
+              </h4>
+            </div>
+
+            {(member.shifts || []).length === 0 ? (
+              <p className="text-slate-500 py-3 text-center border border-dashed border-slate-800 rounded-lg text-xs">
+                Nenhum plantão individual registrado.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-64 sm:max-h-80 overflow-y-auto pr-1">
+                {groupedShifts.map(group => (
+                  <div key={group.monthKey} className="space-y-1">
+                    {/* Linha Divisória Horizontal Sutil com Mês e Subtotal */}
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400 before:flex-1 before:border-t before:border-slate-800 after:flex-1 after:border-t after:border-slate-800 my-2">
+                      <span className="font-mono font-semibold tracking-wider text-slate-300">
+                        {group.monthLabel} • {group.totalHours}h ({group.shifts.length} {group.shifts.length === 1 ? 'plantão' : 'plantões'})
+                      </span>
+                    </div>
+
+                    {/* Plantões em Linha Única Super Compacta */}
+                    {group.shifts.map(shift => {
+                      const parts = parseDateToShiftParts(shift.date, shift.monthKey);
+                      const isAbsence = shift.shiftStatus === 'falta_injustificada' || 
+                                        shift.shiftStatus === 'falta_justificada' || 
+                                        shift.description?.toLowerCase().includes('falta') ||
+                                        shift.hours === 0;
+
+                      const { monthIndex, year } = parseMonthKey(shift.monthKey || parts.monthKey || group.monthKey);
+                      const scaleMonthLabel = formatFullMonthYear(monthIndex, year);
+                      const displayDate = isAbsence ? scaleMonthLabel : (parts.dayMonth || shift.date);
+
+                      const statusLabel = shift.shiftStatus === 'falta_injustificada' 
+                        ? 'Falta Não Just.' 
+                        : shift.shiftStatus === 'falta_justificada' 
+                        ? 'Falta Justificada' 
+                        : 'Concluído';
+                      const statusStyle = shift.shiftStatus === 'falta_injustificada'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        : shift.shiftStatus === 'falta_justificada'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                      const typeLabel = isAbsence ? 'Escala' : (shift.type === 'reposicao' ? 'Reposição' : 'Plantão');
 
                       return (
-                        <div key={group.monthKey} className="space-y-1.5">
-                          {/* Cabeçalho / Separador do Mês */}
-                          <div className="flex items-center gap-2 pb-1">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 font-mono bg-emerald-950/40 border border-emerald-800/50 px-2.5 py-0.5 rounded-lg flex items-center gap-1.5">
-                              <Calendar className="w-3 h-3 text-emerald-400" />
-                              {monthLabel}
+                        <div 
+                          key={shift.id}
+                          className="py-1.5 px-2.5 bg-slate-800/40 border border-slate-800/80 rounded-lg flex items-center justify-between text-xs hover:bg-slate-800/60 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`font-bold font-mono text-xs shrink-0 ${isAbsence ? 'text-amber-300/90' : 'text-white'}`}>{displayDate}</span>
+                            <span className="text-slate-400 text-xs truncate max-w-[140px] sm:max-w-[180px]">{typeLabel}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${statusStyle}`}>
+                              {statusLabel}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono">
-                              ({group.shifts.length} {group.shifts.length === 1 ? 'plantão' : 'plantões'})
-                            </span>
-                            <div className="h-px bg-slate-800/80 flex-1 ml-1" />
                           </div>
-
-                          {/* Bloco Único Título-Colado para Plantões do MESMO Mês */}
-                          <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl divide-y divide-slate-800/60 shadow-sm">
-                            {group.shifts.map(shift => {
-                              const isEditing = editingShiftId === shift.id;
-
-                              if (isEditing) {
-                                return (
-                                  <form
-                                    key={shift.id}
-                                    onSubmit={handleSaveEditShift}
-                                    className="py-2.5 px-3 bg-slate-800/90 border-l-2 border-l-emerald-500 space-y-2"
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-semibold text-white text-xs flex items-center gap-1.5">
-                                        <Pencil className="w-3.5 h-3.5 text-emerald-400" />
-                                        Editar Escala / Plantão
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 font-mono">ID: {shift.id}</span>
-                                    </div>
-
-                                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2.5">
-                                      <div className="flex-1 min-w-[140px]">
-                                        <CustomDatePicker
-                                          label="Data do Plantão"
-                                          required
-                                          value={editShiftFullDate}
-                                          onChange={val => setEditShiftFullDate(val)}
-                                          format="ISO"
-                                        />
-                                      </div>
-
-                                      <div className="w-full sm:w-44 shrink-0">
-                                        <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
-                                          Carga Horária *
-                                        </label>
-                                        <select
-                                          value={editShiftHours}
-                                          onChange={e => setEditShiftHours(Number(e.target.value))}
-                                          className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-                                        >
-                                          <option value={12}>12 horas (Padrão)</option>
-                                          <option value={6}>6 horas</option>
-                                          <option value={4}>4 horas (Aula/Reunião)</option>
-                                          <option value={24}>24 horas (Duplo)</option>
-                                        </select>
-                                      </div>
-
-                                      <div className="flex items-center gap-1.5 shrink-0 self-end">
-                                        <button
-                                          type="button"
-                                          onClick={handleCancelEditShift}
-                                          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                                        >
-                                          Cancelar
-                                        </button>
-                                        <button
-                                          type="submit"
-                                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs cursor-pointer flex items-center gap-1 shadow-sm transition-colors"
-                                        >
-                                          <Check className="w-3.5 h-3.5" />
-                                          <span>Salvar</span>
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </form>
-                                );
-                              }
-
-                              return (
-                                <div
-                                  key={shift.id}
-                                  className="px-3 py-2 hover:bg-slate-800/40 flex items-center justify-between gap-2 transition-colors text-xs"
-                                >
-                                  {/* Esquerda: Ícone + Data + Título + Badge + Carga Horária */}
-                                  <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap sm:flex-nowrap">
-                                    <Calendar className={`w-3.5 h-3.5 shrink-0 ${
-                                      shift.shiftStatus === 'falta_injustificada'
-                                        ? 'text-rose-400'
-                                        : shift.shiftStatus === 'falta_justificada'
-                                        ? 'text-blue-400'
-                                        : 'text-emerald-400'
-                                    }`} />
-
-                                    {(() => {
-                                      const isAbsence = shift.shiftStatus === 'falta_injustificada' || 
-                                                        shift.shiftStatus === 'falta_justificada' || 
-                                                        shift.description?.toLowerCase().includes('falta') ||
-                                                        shift.hours === 0;
-                                      const { monthIndex, year } = parseMonthKey(shift.monthKey || group.monthKey);
-                                      const scaleMonthLabel = formatFullMonthYear(monthIndex, year);
-                                      const displayDate = isAbsence ? scaleMonthLabel : shift.date;
-
-                                      return (
-                                        <span className={`font-bold font-mono text-xs shrink-0 ${isAbsence ? 'text-amber-300/90' : 'text-white'}`}>
-                                          {displayDate}
-                                        </span>
-                                      );
-                                    })()}
-
-                                    <span className="text-slate-200 font-medium truncate">
-                                      {shift.shiftStatus === 'falta_injustificada'
-                                        ? 'Falta Não Justificada'
-                                        : shift.shiftStatus === 'falta_justificada'
-                                        ? 'Falta Justificada'
-                                        : shift.type === 'reposicao' || shift.description === 'Plantão de Reposição Concluído'
-                                        ? 'Plantão de Reposição'
-                                        : 'Plantão'}
-                                    </span>
-
-                                    {shift.shiftStatus === 'falta_injustificada' ? (
-                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shrink-0">
-                                        FNJ
-                                      </span>
-                                    ) : shift.shiftStatus === 'falta_justificada' ? (
-                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 font-semibold border border-blue-500/30 shrink-0">
-                                        FJ
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30 shrink-0">
-                                        Concluído
-                                      </span>
-                                    )}
-
-                                    <span className={`font-bold font-mono shrink-0 ${
-                                      shift.shiftStatus === 'falta_injustificada' || shift.shiftStatus === 'falta_justificada'
-                                        ? 'text-slate-400'
-                                        : 'text-emerald-400'
-                                    }`}>
-                                      +{shift.hours || 12}h
-                                    </span>
-                                  </div>
-
-                                  {/* Direita: Botões quadrados apenas com ícones (w-7 h-7) */}
-                                  {isCoordination && (
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleStartEditShift(shift);
-                                        }}
-                                        className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-emerald-300 bg-slate-800 hover:bg-emerald-500/15 border border-slate-700 hover:border-emerald-500/30 rounded-md transition-colors cursor-pointer"
-                                        title="Editar"
-                                      >
-                                        <Pencil className="w-3.5 h-3.5" />
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteShift(shift.id);
-                                        }}
-                                        className="w-7 h-7 flex items-center justify-center text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-md transition-colors cursor-pointer"
-                                        title="Remover"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            <span className={`font-mono font-bold text-xs ${shift.hours > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                              {shift.hours > 0 ? `${shift.hours}h` : '0h'}
+                            </span>
+                            {isCoordination && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingShift(shift);
+                                }}
+                                className="p-1.5 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 transition-colors cursor-pointer"
+                                title="Editar registro"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                )}
+                ))}
               </div>
-            </div>
+            )}
           </div>
+        </div>
 
-        {/* Edit Member Profile Modal Dialog (Triggered by Editar Cadastro button in Header) */}
-        {isEditingProfile && (
-          <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-scaleUp">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
-                    <Pencil className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">Editar Cadastro do Integrante</h3>
-                    <p className="text-[11px] text-slate-400">{member.name}</p>
-                  </div>
+        {/* RODAPÉ DO MODAL COM BOTÃO "FECHAR" E "DAR BAIXA / REATIVAR" */}
+        <div className="p-3 border-t border-slate-800 bg-slate-950 flex items-center justify-between gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <span>Fechar</span>
+          </button>
+
+          {isCoordination && onUpdateMember && (
+            Boolean(member.isBaixa || member.status === 'baixa') ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const updated: Member = {
+                    ...member,
+                    isBaixa: false,
+                    status: 'ativo',
+                  };
+                  onUpdateMember(updated);
+                }}
+                className="py-2 px-3.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                title="Reativar integrante na liga (retorna para a lista de Membros Ativos com todo o histórico intacto)"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Reativar</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  const updated: Member = {
+                    ...member,
+                    isBaixa: true,
+                    status: 'baixa',
+                  };
+                  onUpdateMember(updated);
+                }}
+                className="py-2 px-3.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                title="Dar baixa no integrante (inativação reversível sem perda de histórico)"
+              >
+                <UserMinus className="w-3.5 h-3.5 text-rose-400" />
+                <span>Dar Baixa</span>
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Submodal de Edição do Cadastro (Coordenação) */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                  <User className="w-4 h-4" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditingProfile(false);
-                    setConfirmDeleteMember(false);
-                  }}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Editar Cadastro do Integrante</h3>
+                  <p className="text-[11px] text-slate-400">Atualizar dados básicos cadastrais</p>
+                </div>
               </div>
-
-              <form onSubmit={(e) => {
-                handleSaveMemberInfo(e);
-                setIsEditingProfile(false);
-              }} className="space-y-4">
-                {/* Grade 2x2 harmoniosa com os 4 campos principais */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
-                      Nome Completo
-                    </label>
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
-                      Cargo / Função
-                    </label>
-                    <select
-                      value={editRole}
-                      onChange={e => setEditRole(e.target.value as RoleInLeague)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-                    >
-                      <option value="Ligante">Ligante</option>
-                      <option value="Coordenação">Coordenação</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
-                      Data de Entrada
-                    </label>
-                    <input
-                      type="text"
-                      value={editEntryDate}
-                      onChange={e => setEditEntryDate(e.target.value)}
-                      required
-                      placeholder="DD/MM/AAAA"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
-                      Horas Totais Acumuladas
-                    </label>
-                    <input
-                      type="number"
-                      value={editHours}
-                      onChange={e => setEditHours(Number(e.target.value))}
-                      required
-                      min={0}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-                  {!confirmDeleteMember ? (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDeleteMember(true)}
-                      className="px-3.5 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 rounded-xl text-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Excluir Membro</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onDeleteMember(member.id);
-                          onClose();
-                        }}
-                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 shadow"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Confirmar Exclusão</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteMember(false)}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs cursor-pointer"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditingProfile(false);
-                        setConfirmDeleteMember(false);
-                      }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs cursor-pointer"
-                    >
-                      Fechar
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
-                    >
-                      Salvar Alterações
-                    </button>
-                  </div>
-                </div>
-              </form>
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          </div>
-        )}
 
-        {/* Monthly Absence Launch Modal (Lançar Falta Justificada / Não Justificada com Referência Mensal Exclusiva) */}
-        {absenceModalType && (
-          <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-scaleUp">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <div className={`p-2 rounded-xl border ${
-                    absenceModalType === 'falta_justificada'
-                      ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
-                      : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                  }`}>
-                    {absenceModalType === 'falta_justificada' ? (
-                      <Info className="w-5 h-5" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">
-                      {absenceModalType === 'falta_justificada'
-                        ? 'Lançar Falta Justificada (F.J)'
-                        : 'Lançar Falta Não Justificada (F.N.J)'}
-                    </h3>
-                    <p className="text-[11px] text-slate-400">
-                      Selecione apenas o Mês e Ano de referência (sem dia exato)
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAbsenceModalType(null)}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+            <form onSubmit={handleSaveMemberProfile} className="space-y-3 text-xs">
+              <div>
+                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Nome Completo *</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
+                />
               </div>
 
-              <div className="space-y-4 text-xs">
-                {/* Custom Month/Year Grid Selector (Paleta Escura #1E293B) */}
-                <div className="bg-[#1E293B] border border-slate-700/80 rounded-2xl p-3 sm:p-3.5 shadow-inner space-y-3">
-                  {/* Top Year Selector Bar */}
-                  <div className="flex items-center justify-between pb-2.5 border-b border-slate-700/70">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectAbsenceMonthYear(selectedAbsenceMonthIdx, selectedAbsenceYear - 1)}
-                      className="p-2 text-slate-300 hover:text-white hover:bg-slate-700/70 rounded-xl transition-colors cursor-pointer min-h-[38px] min-w-[38px] flex items-center justify-center"
-                      title="Ano anterior"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-
-                    <div className="flex items-center gap-1.5">
-                      {[getCurrentYear() - 1, getCurrentYear(), getCurrentYear() + 1].map(yr => {
-                        const isYearSelected = selectedAbsenceYear === yr;
-                        return (
-                          <button
-                            key={yr}
-                            type="button"
-                            onClick={() => handleSelectAbsenceMonthYear(selectedAbsenceMonthIdx, yr)}
-                            className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer min-h-[38px] ${
-                              isYearSelected
-                                ? 'bg-emerald-600 text-white shadow-sm'
-                                : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
-                            }`}
-                          >
-                            {yr}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSelectAbsenceMonthYear(selectedAbsenceMonthIdx, selectedAbsenceYear + 1)}
-                      className="p-2 text-slate-300 hover:text-white hover:bg-slate-700/70 rounded-xl transition-colors cursor-pointer min-h-[38px] min-w-[38px] flex items-center justify-center"
-                      title="Próximo ano"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* 4x3 Grid of Month Buttons */}
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                    {['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'].map((shortLabel, mIdx) => {
-                      const isSelected = selectedAbsenceMonthIdx === mIdx;
-                      const isCurrentMonth = mIdx === getCurrentMonthIndex() && selectedAbsenceYear === getCurrentYear();
-
-                      return (
-                        <button
-                          key={shortLabel}
-                          type="button"
-                          onClick={() => handleSelectAbsenceMonthYear(mIdx, selectedAbsenceYear)}
-                          className={`py-2 px-1.5 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 border min-h-[46px] active:scale-95 ${
-                            isSelected
-                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-emerald-400 shadow-md shadow-emerald-950/50'
-                              : isCurrentMonth
-                              ? 'bg-slate-900/90 hover:bg-slate-700/80 text-emerald-300 font-semibold border-emerald-500/40'
-                              : 'bg-slate-900/70 hover:bg-slate-700/80 text-slate-200 hover:text-white border-slate-700/60'
-                          }`}
-                        >
-                          <span className="text-xs font-mono tracking-wide font-bold">{shortLabel}</span>
-                          <span className={`text-[9px] ${isSelected ? 'text-emerald-100' : 'text-slate-400'}`}>
-                            {FULL_MONTH_NAMES[mIdx]}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Cargo na Liga</label>
+                  <select
+                    value={editRole}
+                    onChange={e => setEditRole(e.target.value as RoleInLeague)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
+                  >
+                    <option value="Ligante">Ligante</option>
+                    <option value="Coordenação">Coordenação</option>
+                  </select>
                 </div>
 
-                {/* Resumo da Referência Mensal e Cálculo Automático do Prazo (+1 ou +2 meses) */}
-                {(() => {
-                  const existingArrayAbs = [...member.justifiedAbsences, ...member.unjustifiedAbsences]
-                    .filter(a => (a.monthKey || 'out/26') === absenceModalMonthKey).length;
-                  const existingShiftAbs = member.shifts
-                    .filter(s => (s.monthKey || 'out/26') === absenceModalMonthKey && (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada')).length;
-                  const nextTotalInMonth = Math.max(existingArrayAbs, existingShiftAbs) + 1;
-                  const { deadlineText } = getReplacementDeadlineInfo(absenceModalMonthKey, nextTotalInMonth);
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={e => setEditStatus(e.target.value as MemberStatus)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
+                  >
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                  </select>
+                </div>
+              </div>
 
-                  return (
-                    <div className={`p-3 rounded-xl border space-y-1.5 ${
-                      absenceModalType === 'falta_justificada'
-                        ? 'bg-blue-950/30 border-blue-500/30 text-blue-200'
-                        : 'bg-rose-950/30 border-rose-500/30 text-rose-200'
-                    }`}>
-                      <div className="flex items-center justify-between font-mono text-xs">
-                        <span className="text-slate-300">Registo no Histórico:</span>
-                        <strong className="text-white">
-                          Mês de Referência: {formatReferenceMonthYear(absenceModalMonthKey, absenceModalMonthKey)}
-                        </strong>
-                      </div>
-                      <div className="flex items-center justify-between font-mono text-xs">
-                        <span className="text-slate-300">Total de faltas neste mês:</span>
-                        <strong className="text-amber-300">
-                          {nextTotalInMonth}ª falta ({nextTotalInMonth >= 2 ? 'Prazo estendido +2 meses' : 'Prazo padrão +1 mês'})
-                        </strong>
-                      </div>
-                      <div className="pt-1 border-t border-slate-800/80 text-amber-300 font-semibold text-xs">
-                        {deadlineText}
-                      </div>
-                    </div>
-                  );
-                })()}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Data de Admissão</label>
+                  <input
+                    type="text"
+                    placeholder="DD/MM/AAAA"
+                    value={editEntryDate}
+                    onChange={e => setEditEntryDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs"
+                  />
+                </div>
 
-                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-slate-800">
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Carga Horária (h)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editHours}
+                    onChange={e => setEditHours(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">E-mail</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={e => setEditEmail(e.target.value)}
+                  placeholder="exemplo@email.com"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                {onDeleteMember && (
                   <button
                     type="button"
-                    onClick={() => setAbsenceModalType(null)}
-                    className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium cursor-pointer transition-colors flex items-center justify-center"
+                    onClick={() => {
+                      if (window.confirm(`Tem certeza que deseja excluir o integrante "${member.name}"?`)) {
+                        onDeleteMember(member.id);
+                        setIsEditingProfile(false);
+                        onClose();
+                      }
+                    }}
+                    className="px-2.5 py-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Excluir</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProfile(false)}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
-                    type="button"
-                    onClick={() => {
-                      const targetType = absenceModalType;
-                      const chosenMonth = absenceModalMonthKey;
-                      setAbsenceModalType(null);
-                      handleRegisterShiftWithStatus(targetType, chosenMonth);
-                    }}
-                    className={`w-full sm:w-auto min-h-[44px] px-4 py-2.5 text-white font-semibold rounded-xl text-xs cursor-pointer shadow-sm transition-colors flex items-center justify-center gap-1.5 active:scale-[0.99] ${
-                      absenceModalType === 'falta_justificada'
-                        ? 'bg-blue-600 hover:bg-blue-500'
-                        : 'bg-rose-600 hover:bg-rose-500'
-                    }`}
+                    type="submit"
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs cursor-pointer shadow-md flex items-center gap-1.5"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>
-                      {absenceModalType === 'falta_justificada'
-                        ? 'Confirmar Falta Justificada (F.J)'
-                        : 'Confirmar Falta Não Justificada (F.N.J)'}
-                    </span>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Salvar</span>
                   </button>
                 </div>
               </div>
-            </div>
+            </form>
           </div>
-        )}
+        </div>
+      )}
 
-        {editingRep && (
-          <QuickReplacementModal
-            members={[member]}
-            initialMemberId={member.id}
-            editingReplacement={{ memberId: member.id, replacement: editingRep }}
-            onClose={() => {
-              setEditingRep(null);
-            }}
-            onUpdateMember={(updated) => {
-              onUpdateMember(updated);
-              showFeedback('Reposição salva no Firestore com sucesso!');
-            }}
-          />
-        )}
-
-        {editingWarn && (
-          <QuickWarningModal
-            members={[member]}
-            initialMemberId={member.id}
-            editingWarning={{ memberId: member.id, warning: editingWarn }}
-            onClose={() => {
-              setEditingWarn(null);
-            }}
-            onUpdateMember={(updated) => {
-              onUpdateMember(updated);
-              showFeedback('Advertência salva no Firestore com sucesso!');
-            }}
-          />
-        )}
-      </div>
+      {/* Submodal de Edição de Plantão/Falta/Reposição */}
+      {editingShift && (
+        <ShiftModal
+          isOpen={Boolean(editingShift)}
+          member={member}
+          editingShift={editingShift}
+          onClose={() => setEditingShift(null)}
+          onSave={(shiftData, isEditing) => {
+            if (!onUpdateMember) return;
+            const updated = updateOrAddMemberShift(member, shiftData, isEditing ? shiftData.id : undefined);
+            onUpdateMember(updated);
+            setEditingShift(null);
+          }}
+          onDelete={(shiftId) => {
+            if (!onUpdateMember) return;
+            const updated = deleteMemberShift(member, shiftId);
+            onUpdateMember(updated);
+            setEditingShift(null);
+          }}
+        />
+      )}
     </div>
   );
 };
+
+export const MemberFichaModal = MemberDetailModal;
