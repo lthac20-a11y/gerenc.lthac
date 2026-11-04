@@ -44,7 +44,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     .slice(0, 5);
 
   return (
-    <div className="space-y-4 sm:space-y-6 w-full max-w-full">
+    <div className="min-h-screen flex flex-col justify-between space-y-4 sm:space-y-6 w-full max-w-full pb-16">
       {/* Welcome & League Overview Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950/80 rounded-2xl p-4 border border-slate-700/60 shadow-xl text-white relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-500/10 to-transparent pointer-events-none" />

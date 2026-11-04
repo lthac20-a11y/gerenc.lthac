@@ -742,7 +742,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-28 md:pb-16 overflow-x-hidden">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 overflow-x-hidden min-h-screen flex flex-col justify-between">
         {currentTab === 'dashboard' && (
           <DashboardView
             members={members}
@@ -825,7 +825,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-slate-900/60 border-t border-slate-800/80 text-center py-4 text-xs text-slate-500 no-print">
+      <footer className="hidden md:block bg-slate-900/60 border-t border-slate-800/80 text-center py-3 text-xs text-slate-500 no-print">
         <p>
           {config.leagueName} ({config.leagueAcronym}) • Meta de Certificação: {config.minHoursForCertificate} horas
         </p>

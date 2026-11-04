@@ -431,7 +431,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-5 w-full max-w-full">
+    <div className="min-h-screen flex flex-col justify-between space-y-4 sm:space-y-5 w-full max-w-full pb-16">
       {/* 1. TOP TOOLBAR & CONTROLS COMPACTO */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-sm">
         {/* Header Row: Ícone + Título + Badge de Membros */}

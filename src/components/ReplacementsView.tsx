@@ -315,7 +315,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 w-full max-w-full">
+    <div className="min-h-screen flex flex-col justify-between space-y-4 sm:space-y-6 w-full max-w-full pb-16">
       {feedbackMsg && (
         <div className="bg-emerald-950/80 border border-emerald-700/60 text-emerald-200 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between shadow-lg">
           <span className="flex items-center gap-2">

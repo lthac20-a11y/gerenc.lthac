@@ -122,7 +122,7 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
   }, [members]);
 
   return (
-    <div className="space-y-4 sm:space-y-5 w-full max-w-full">
+    <div className="min-h-screen flex flex-col justify-between space-y-4 sm:space-y-5 w-full max-w-full pb-16">
       {/* 1. TOP HEADER & METRICS BANNER */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-md">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">

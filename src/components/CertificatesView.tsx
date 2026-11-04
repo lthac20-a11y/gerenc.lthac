@@ -248,7 +248,7 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8 animate-fadeIn w-full max-w-full">
+    <div className="min-h-screen flex flex-col justify-between space-y-6 sm:space-y-8 animate-fadeIn w-full max-w-full pb-16">
       {/* ========================================================= */}
       {/* 1. SEÇÃO SUPERIOR — QUADRO DIRETIVO & PRECEPTORIA         */}
       {/* ========================================================= */}
