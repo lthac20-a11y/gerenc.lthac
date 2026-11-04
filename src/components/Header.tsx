@@ -222,11 +222,11 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="min-h-[44px] min-w-[44px] p-2.5 text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-700/80 rounded-xl transition-all cursor-pointer flex items-center justify-center active:scale-95 shadow-sm"
-                aria-label="Abrir menu de navegação"
+                onClick={logout}
+                className="min-h-[44px] min-w-[44px] p-2.5 text-rose-400 hover:text-white bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/50 rounded-xl transition-all cursor-pointer flex items-center justify-center active:scale-95 shadow-sm"
+                aria-label="Sair da conta"
               >
-                <Menu className="w-5 h-5 text-emerald-400" />
+                <LogOut className="w-5 h-5" />
               </button>
             </div>
           </div>
