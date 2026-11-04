@@ -90,9 +90,14 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
     });
   };
 
+  // Active members only (exclude baixas)
+  const activeMembers = useMemo(() => {
+    return members.filter(m => !Boolean(m.isBaixa || m.status === 'baixa'));
+  }, [members]);
+
   // Members with warnings filtered by search
   const membersWithWarnings = useMemo(() => {
-    return members
+    return activeMembers
       .filter(m => m.warnings && m.warnings.length > 0)
       .filter(m => {
         if (!searchTerm.trim()) return true;
@@ -110,16 +115,16 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
         if (b.warnings.length !== a.warnings.length) return b.warnings.length - a.warnings.length;
         return a.name.localeCompare(b.name);
       });
-  }, [members, searchTerm]);
+  }, [activeMembers, searchTerm]);
 
-  // Overall statistics
+  // Overall statistics for active members
   const totalActiveWarnings = useMemo(() => {
-    return members.reduce((acc, m) => acc + m.warnings.filter(w => w.active).length, 0);
-  }, [members]);
+    return activeMembers.reduce((acc, m) => acc + m.warnings.filter(w => w.active).length, 0);
+  }, [activeMembers]);
 
   const membersAtLimitCount = useMemo(() => {
-    return members.filter(m => m.warnings.filter(w => w.active).length >= 3).length;
-  }, [members]);
+    return activeMembers.filter(m => m.warnings.filter(w => w.active).length >= 3).length;
+  }, [activeMembers]);
 
   return (
     <div className="min-h-screen flex flex-col justify-between space-y-4 sm:space-y-5 w-full max-w-full pb-16">

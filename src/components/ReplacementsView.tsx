@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Repeat, 
   Plus, 
@@ -157,38 +157,44 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
     setTimeout(() => setFeedbackMsg(null), 4000);
   };
 
-  // Collect overall counts
-  const allReplacements = members.flatMap(member => member.replacements);
-  const pendingCount = allReplacements.filter(r => !r.completed).length;
-  const completedCount = allReplacements.filter(r => r.completed).length;
-  const membersWithPending = members.filter(m => m.replacements.some(r => !r.completed)).length;
+  // Filter active members only (exclude baixas)
+  const activeMembers: Member[] = useMemo(() => {
+    return members.filter(m => !Boolean(m.isBaixa || m.status === 'baixa'));
+  }, [members]);
 
-  // Group replacements by Member
-  const memberGroups = members
-    .map(member => {
-      const filteredReps = member.replacements.filter(item => {
-        if (filter === 'pendentes') return !item.completed;
-        return true;
+  // Collect overall counts for active members
+  const allReplacements: ReplacementRecord[] = useMemo(() => activeMembers.flatMap((member: Member) => member.replacements), [activeMembers]);
+  const pendingCount: number = useMemo(() => allReplacements.filter((r: ReplacementRecord) => !r.completed).length, [allReplacements]);
+  const completedCount: number = useMemo(() => allReplacements.filter((r: ReplacementRecord) => r.completed).length, [allReplacements]);
+  const membersWithPending: number = useMemo(() => activeMembers.filter((m: Member) => m.replacements.some((r: ReplacementRecord) => !r.completed)).length, [activeMembers]);
+
+  // Group replacements by Active Member
+  const memberGroups = useMemo(() => {
+    return activeMembers
+      .map((member: Member) => {
+        const filteredReps = member.replacements.filter((item: ReplacementRecord) => {
+          if (filter === 'pendentes') return !item.completed;
+          return true;
+        });
+
+        const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const pendingRepsCount = member.replacements.filter((r: ReplacementRecord) => !r.completed).length;
+
+        return {
+          member,
+          replacements: filteredReps,
+          allMemberReplacements: member.replacements,
+          pendingRepsCount,
+          matchesSearch,
+        };
+      })
+      .filter(group => {
+        if (searchTerm) {
+          return group.matchesSearch && group.allMemberReplacements.length > 0;
+        }
+        return group.replacements.length > 0;
       });
-
-      const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const pendingRepsCount = member.replacements.filter(r => !r.completed).length;
-
-      return {
-        member,
-        replacements: filteredReps,
-        allMemberReplacements: member.replacements,
-        pendingRepsCount,
-        matchesSearch,
-      };
-    })
-    .filter(group => {
-      if (searchTerm) {
-        return group.matchesSearch && group.allMemberReplacements.length > 0;
-      }
-      return group.replacements.length > 0;
-    });
+  }, [activeMembers, filter, searchTerm]);
 
   // Handler: Complete replacement with custom completion date
   const handleComplete = (memberId: string, repId: string, customDate?: string) => {
