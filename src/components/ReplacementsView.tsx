@@ -591,7 +591,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
       </div>
 
       {/* Grouped Replacements Accordion List */}
-      <div className="space-y-2 pb-16">
+      <div className="space-y-2 pb-20">
         {memberGroups.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs">
             <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />

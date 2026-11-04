@@ -222,7 +222,7 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
       </div>
 
       {/* 3. GROUPED LIST BY MEMBER (ACCORDION) */}
-      <div className="space-y-2 pb-16">
+      <div className="space-y-2 pb-20">
         {membersWithWarnings.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
             <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />

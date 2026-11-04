@@ -246,7 +246,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
       </div>
 
       {/* MOBILE MEMBER CARDS (< 768px) - ULTRA COMPACT HIGH DENSITY VIEW */}
-      <div className="block md:hidden space-y-2 sm:space-y-2.5 mb-16">
+      <div className="block md:hidden space-y-2 sm:space-y-2.5 pb-20">
         {filteredMembers.length === 0 ? (
           <div className="p-6 text-center text-slate-300 text-xs sm:text-sm bg-slate-900 border border-slate-800 rounded-xl">
             Nenhum integrante encontrado com os filtros selecionados.
@@ -388,7 +388,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
       </div>
 
       {/* SPREADSHEET TABLE (DESKTOP VIEW >= 768px) */}
-      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mb-16">
+      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg pb-20">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1060px]">
             <thead>

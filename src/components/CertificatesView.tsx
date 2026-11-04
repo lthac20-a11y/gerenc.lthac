@@ -491,7 +491,7 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
         </div>
 
         {/* Lista Compacta de Membros */}
-        <div className="space-y-2 pb-16">
+        <div className="space-y-2 pb-20">
           {filteredMembers.length === 0 ? (
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400">
               <User className="w-7 h-7 mx-auto mb-2 text-slate-600" />
