@@ -143,18 +143,37 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   // Count pending replacements
   const currentPendingReplacements = member.replacements.filter(r => !r.completed).length;
 
-  // Group member shifts by monthKey for organized visual blocks
+  // Group member shifts by monthKey for organized visual blocks (Sorted descending chronological)
   const groupedShifts = useMemo(() => {
-    const groups: { monthKey: string; shifts: ShiftRecord[] }[] = [];
+    const groups: { monthKey: string; shifts: ShiftRecord[]; timestamp: number }[] = [];
     member.shifts.forEach(shift => {
       const key = shift.monthKey || 'out/26';
       const existingGroup = groups.find(g => g.monthKey === key);
       if (existingGroup) {
         existingGroup.shifts.push(shift);
       } else {
-        groups.push({ monthKey: key, shifts: [shift] });
+        const { monthIndex, year } = parseMonthKey(key);
+        const timestamp = year * 100 + monthIndex;
+        groups.push({ monthKey: key, shifts: [shift], timestamp });
       }
     });
+
+    // Sort month groups strictly descending (newest month first: ABRIL/2026 above FEVEREIRO/2026)
+    groups.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Sort shifts within each month group descending by day number
+    groups.forEach(group => {
+      group.shifts.sort((a, b) => {
+        const parseDay = (dStr: string) => {
+          if (!dStr) return 0;
+          if (dStr.includes('/')) return parseInt(dStr.split('/')[0], 10) || 0;
+          if (dStr.includes('-')) return parseInt(dStr.split('-')[2], 10) || 0;
+          return 0;
+        };
+        return parseDay(b.date) - parseDay(a.date);
+      });
+    });
+
     return groups;
   }, [member.shifts]);
 
@@ -703,91 +722,81 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-6 overflow-y-auto">
+      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl w-full max-w-full md:max-w-4xl max-h-[100dvh] sm:max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
         
         {/* Header with Member Overview */}
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-4 sm:p-5 border-b border-slate-800 relative shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-3.5 right-3.5 p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-xl transition-colors cursor-pointer z-10"
-            title="Fechar ficha"
-          >
-            <X className="w-5 h-5" />
-          </button>
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-3 sm:p-4 border-b border-slate-800 relative shrink-0">
+          {/* Top Right Actions: Edit Member + Close button */}
+          <div className="absolute top-2.5 right-2.5 sm:top-3.5 sm:right-3.5 flex items-center gap-1.5 z-10">
+            {isCoordination && (
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(true)}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-emerald-500/40 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                title="Editar cadastro do integrante"
+              >
+                <Pencil className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Editar Cadastro</span>
+              </button>
+            )}
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-8">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-lg sm:text-xl font-bold shadow-lg shadow-teal-500/20 font-serif shrink-0">
-                {member.name.charAt(0)}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">{member.name}</h2>
-                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border shrink-0 ${
-                    member.role === 'Coordenação'
-                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                  }`}>
-                    {member.role}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 mt-0.5 truncate">
-                  Admissão: {member.entryDate} • {activeTime.formatted} de atividade contínua
-                </p>
-              </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors cursor-pointer"
+              title="Fechar ficha"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2.5 pr-28 sm:pr-40 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-teal-500/20 font-display shrink-0">
+              {member.name.charAt(0)}
             </div>
-
-            {/* Edit Member Profile Action Button (In place of Meta badge) */}
-            <div className="flex items-center gap-2 shrink-0 self-start sm:self-center mr-8 sm:mr-10">
-              {isCoordination && (
-                <button
-                  type="button"
-                  onClick={() => setIsEditingProfile(true)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-emerald-500/40 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
-                  title="Editar cadastro do integrante"
-                >
-                  <Pencil className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Editar Cadastro</span>
-                </button>
-              )}
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm sm:text-base font-bold text-white tracking-tight truncate font-display">{member.name}</h2>
+              <p className="text-xs text-slate-400 mt-0.5 font-mono truncate">
+                Adm: {member.entryDate} • {activeTime.formatted.replace(' de atividade contínua', ' ativo').replace(' de atividade', ' ativo')}
+              </p>
             </div>
           </div>
 
-          {/* Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-3 pt-3 border-t border-slate-800/80 text-xs">
-            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] uppercase font-semibold truncate">Carga Horária</span>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <span className="font-bold text-white font-mono text-sm">{member.accumulatedHours}h</span>
-                <span className="text-[10px] text-slate-400">/ {config.minHoursForCertificate}h</span>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] uppercase font-semibold truncate">Faltas Justificadas</span>
-              <span className="font-bold text-blue-400 font-mono text-sm block mt-0.5">{member.justifiedAbsences.length} FJ</span>
-            </div>
-
-            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] uppercase font-semibold truncate">Faltas Não Justif.</span>
-              <span className={`font-bold font-mono text-sm block mt-0.5 ${member.unjustifiedAbsences.length > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
-                {member.unjustifiedAbsences.length} FNJ
+          {/* Barra Única de Indicadores (5 Métricas em 1 Linha) */}
+          <div className="grid grid-cols-5 gap-1.5 mt-3 pt-2.5 border-t border-slate-800/80 text-center">
+            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
+              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">HORAS</span>
+              <span className="font-bold text-white font-mono text-xs block mt-0.5 truncate">
+                {member.accumulatedHours}h/{config.minHoursForCertificate}h
               </span>
             </div>
 
-            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 min-w-0">
-              <span className="text-slate-400 block text-[10px] uppercase font-semibold truncate">Reposições Pend.</span>
-              <span className={`font-bold font-mono text-sm block mt-0.5 ${currentPendingReplacements > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
-                {currentPendingReplacements} REP
+            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
+              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">FJ</span>
+              <span className="font-bold text-blue-400 font-mono text-xs block mt-0.5">
+                {member.justifiedAbsences.length}
               </span>
             </div>
 
-            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 col-span-2 sm:col-span-1 min-w-0">
-              <span className="text-slate-400 block text-[10px] uppercase font-semibold truncate">Advertências</span>
-              <span className={`font-bold font-mono text-sm block mt-0.5 ${member.warnings.filter(w => w.active).length > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
-                {member.warnings.filter(w => w.active).length} ADV
+            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
+              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">FNJ</span>
+              <span className={`font-bold font-mono text-xs block mt-0.5 ${member.unjustifiedAbsences.length > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                {member.unjustifiedAbsences.length}
+              </span>
+            </div>
+
+            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
+              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">REP</span>
+              <span className={`font-bold font-mono text-xs block mt-0.5 ${currentPendingReplacements > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+                {currentPendingReplacements}
+              </span>
+            </div>
+
+            <div className="bg-slate-800/60 p-1.5 sm:p-2 rounded-xl border border-slate-700/50 min-w-0">
+              <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider truncate">ADV</span>
+              <span className={`font-bold font-mono text-xs block mt-0.5 ${member.warnings.filter(w => w.active).length > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                {member.warnings.filter(w => w.active).length}
               </span>
             </div>
           </div>
@@ -811,22 +820,20 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
         )}
 
         {/* Modal Body with unified single-view content */}
-        <div className="p-4 sm:p-5 overflow-y-auto flex-1 min-h-0 space-y-5 text-xs text-slate-300">
-          <div className="space-y-4">
-              {/* Add Shift Form (Coordination Only) */}
+        <div className="p-3.5 sm:p-4 overflow-y-auto flex-1 min-h-0 space-y-4 text-xs text-slate-300">
+          <div className="space-y-3.5">
+              {/* Add Shift Form (Coordination Only) - Ultra Compact */}
               {isCoordination && (
-                <form onSubmit={handleAddShift} className="p-4 bg-slate-800/50 border border-slate-700/60 rounded-2xl space-y-3.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <form onSubmit={handleAddShift} className="p-3 bg-slate-800/50 border border-slate-700/60 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between">
                     <span className="font-semibold text-white text-xs flex items-center gap-1.5">
-                      <Plus className="w-4 h-4 text-emerald-400" />
+                      <Plus className="w-3.5 h-3.5 text-emerald-400" />
                       Lançar Plantão na Escala
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      O regimento aplica advertências e reposições conforme o status
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  {/* Campos lado a lado */}
+                  <div className="grid grid-cols-2 gap-2.5 items-end">
                     <div>
                       <CustomDatePicker
                         label="Data do Plantão"
@@ -842,7 +849,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                       <select
                         value={newShiftHours}
                         onChange={e => setNewShiftHours(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none min-h-[34px]"
                       >
                         <option value={12}>12 horas (Padrão)</option>
                         <option value={6}>6 horas</option>
@@ -850,30 +857,29 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                         <option value={24}>24 horas (Duplo)</option>
                       </select>
                     </div>
-
-                    <div>
-                      <button
-                        type="submit"
-                        className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Salvar Plantão</span>
-                      </button>
-                    </div>
                   </div>
 
-                  {/* Quick Absence Action Buttons (Desvinculados de Data do Plantão — Abrem Seletor Mês/Ano) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  {/* Botão de Salvar */}
+                  <button
+                    type="submit"
+                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5 active:scale-[0.99]"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Salvar Plantão</span>
+                  </button>
+
+                  {/* Botões Secundários Lançar Falta Lado a Lado */}
+                  <div className="grid grid-cols-2 gap-2 pt-0.5">
                     <button
                       type="button"
                       onClick={() => {
                         setAbsenceModalMonthKey(formatMonthKey(getCurrentMonthIndex(), getCurrentYear()));
                         setAbsenceModalType('falta_justificada');
                       }}
-                      className="w-full py-2 px-3 bg-blue-950/40 hover:bg-blue-900/50 border border-blue-500/40 text-blue-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-1.5 px-2 bg-blue-950/40 hover:bg-blue-900/50 border border-blue-500/40 text-blue-300 font-semibold rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 active:scale-[0.99]"
                     >
                       <Info className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      <span>Lançar Falta Justificada (F.J)</span>
+                      <span>+ Falta Justif. (FJ)</span>
                     </button>
 
                     <button
@@ -882,10 +888,10 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                         setAbsenceModalMonthKey(formatMonthKey(getCurrentMonthIndex(), getCurrentYear()));
                         setAbsenceModalType('falta_injustificada');
                       }}
-                      className="w-full py-2 px-3 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/40 text-rose-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-1.5 px-2 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/40 text-rose-300 font-semibold rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 active:scale-[0.99]"
                     >
                       <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                      <span>Lançar Falta Não Justificada (F.N.J)</span>
+                      <span>+ Falta Não Justif. (FNJ)</span>
                     </button>
                   </div>
                 </form>
@@ -932,7 +938,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                         return (
                           <div
                             key={rep.id}
-                            className={`p-3 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                            className={`p-3 sm:p-3.5 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
                               isOverdue
                                 ? 'bg-rose-950/20 border-rose-500/50'
                                 : 'bg-slate-800/40 border-amber-500/30'
@@ -953,12 +959,12 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                                   {rep.scheduledHours || 12}h
                                 </span>
 
-                                <span className="text-slate-300 text-xs font-mono">
+                                <span className="text-slate-300 text-xs font-mono break-words">
                                   Mês de Referência: <strong>{formatReferenceMonthYear(rep.missedShiftDate, rep.deadlineMonth || 'out/26')}</strong>
                                 </span>
                               </div>
 
-                              <div className="text-xs">
+                              <div className="text-xs break-words">
                                 {isOverdue ? (
                                   <span className="text-rose-300 font-semibold">
                                     ⚠️ Prazo Expirado - Sujeito a Advertência ({deadlineText})
@@ -972,10 +978,10 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                             </div>
 
                             {isCoordination && (
-                              <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-center">
-                                <div className="flex items-center gap-1.5">
+                              <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800/80 shrink-0">
+                                <div className="flex items-center gap-2 flex-1 sm:flex-none justify-between sm:justify-start">
                                   <span className="text-[11px] text-slate-300 whitespace-nowrap font-medium">Data feita:</span>
-                                  <div className="w-36">
+                                  <div className="w-full sm:w-36">
                                     <CustomDatePicker
                                       value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
                                       onChange={val => setCompletionDates(prev => ({ ...prev, [rep.id]: val }))}
@@ -984,28 +990,30 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                                   </div>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleCompleteReplacement(
-                                      rep.id,
-                                      completionDates[rep.id] || new Date().toLocaleDateString('pt-BR')
-                                    )
-                                  }
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow transition-colors cursor-pointer whitespace-nowrap"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>Concluir (+{rep.scheduledHours || 12}h)</span>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleCompleteReplacement(
+                                        rep.id,
+                                        completionDates[rep.id] || new Date().toLocaleDateString('pt-BR')
+                                      )
+                                    }
+                                    className="flex-1 sm:flex-none min-h-[42px] sm:min-h-[36px] inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow transition-colors cursor-pointer whitespace-nowrap active:scale-[0.99]"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Concluir (+{rep.scheduledHours || 12}h)</span>
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteReplacement(rep.id)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-700/80 hover:border-rose-500/30 rounded-xl transition-colors cursor-pointer"
-                                  title="Eliminar reposição e reverter falta original"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteReplacement(rep.id)}
+                                    className="min-h-[42px] min-w-[42px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-700/80 hover:border-rose-500/30 rounded-xl transition-colors cursor-pointer"
+                                    title="Eliminar reposição e reverter falta original"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1058,7 +1066,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                           </div>
 
                           {/* Bloco Único Título-Colado para Plantões do MESMO Mês */}
-                          <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl overflow-hidden divide-y divide-slate-800/60 shadow-sm">
+                          <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl divide-y divide-slate-800/60 shadow-sm">
                             {group.shifts.map(shift => {
                               const isEditing = editingShiftId === shift.id;
 
@@ -1128,77 +1136,68 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                               return (
                                 <div
                                   key={shift.id}
-                                  className="py-2 px-3 hover:bg-slate-800/40 flex flex-row items-center justify-between gap-3 transition-colors text-xs overflow-x-auto scrollbar-none whitespace-nowrap"
+                                  className="px-3 py-2 hover:bg-slate-800/40 flex items-center justify-between gap-2 transition-colors text-xs"
                                 >
-                                  {/* Esquerda + Centro */}
-                                  <div className="flex flex-row items-center gap-2 flex-1 whitespace-nowrap">
-                                    {/* 1. Esquerda: Ícone de calendário, data em negrito (ou Mês de Referência para faltas) e barra vertical fina (|) */}
-                                    <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                                      <Calendar className={`w-3.5 h-3.5 shrink-0 ${
-                                        shift.shiftStatus === 'falta_injustificada'
-                                          ? 'text-rose-400'
-                                          : shift.shiftStatus === 'falta_justificada'
-                                          ? 'text-blue-400'
-                                          : 'text-emerald-400'
-                                      }`} />
-                                      {shift.shiftStatus === 'falta_injustificada' || shift.shiftStatus === 'falta_justificada' ? (
-                                        <span className="font-bold text-white font-mono whitespace-nowrap">
-                                          Mês de Referência: {formatReferenceMonthYear(shift.date, shift.monthKey)}
-                                        </span>
-                                      ) : (
-                                        <>
-                                          <span className="font-bold text-white font-mono whitespace-nowrap">{shift.date}</span>
-                                          <span className="text-slate-400 font-mono text-[11px] whitespace-nowrap">({shift.monthKey})</span>
-                                        </>
-                                      )}
-                                      <span className="text-slate-700 px-1 select-none">|</span>
-                                    </div>
+                                  {/* Esquerda: Ícone + Data + Título + Badge + Carga Horária */}
+                                  <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap sm:flex-nowrap">
+                                    <Calendar className={`w-3.5 h-3.5 shrink-0 ${
+                                      shift.shiftStatus === 'falta_injustificada'
+                                        ? 'text-rose-400'
+                                        : shift.shiftStatus === 'falta_justificada'
+                                        ? 'text-blue-400'
+                                        : 'text-emerald-400'
+                                    }`} />
 
-                                    {/* 2. Centro: Ícone de relógio pequeno, tipo de plantão sem corte, ponto (•), carga horária (+12hs) e tag de status */}
-                                    <div className="flex items-center gap-2 flex-1 whitespace-nowrap">
-                                      <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-                                      <span className="text-slate-200 whitespace-nowrap shrink-0">
-                                        {shift.shiftStatus === 'falta_injustificada' ||
-                                        shift.shiftStatus === 'falta_justificada' ||
-                                        shift.type === 'reposicao' ||
-                                        shift.description === 'Plantão de Reposição Concluído'
-                                          ? shift.description || 'Plantão de Reposição Concluído'
-                                          : shift.description || 'Plantão Concluído'}
+                                    <span className="font-bold text-white font-mono text-xs shrink-0">
+                                      {shift.date}
+                                    </span>
+
+                                    <span className="text-slate-200 font-medium truncate">
+                                      {shift.shiftStatus === 'falta_injustificada'
+                                        ? 'Falta Não Justificada'
+                                        : shift.shiftStatus === 'falta_justificada'
+                                        ? 'Falta Justificada'
+                                        : shift.type === 'reposicao' || shift.description === 'Plantão de Reposição Concluído'
+                                        ? 'Plantão de Reposição'
+                                        : 'Plantão'}
+                                    </span>
+
+                                    {shift.shiftStatus === 'falta_injustificada' ? (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shrink-0">
+                                        FNJ
                                       </span>
-                                      <span className="text-slate-600 shrink-0">•</span>
-                                      <span className="font-bold font-mono text-emerald-400 shrink-0 whitespace-nowrap">
-                                        +{shift.hours || 12}hs
+                                    ) : shift.shiftStatus === 'falta_justificada' ? (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 font-semibold border border-blue-500/30 shrink-0">
+                                        FJ
                                       </span>
-                                      {shift.shiftStatus === 'falta_injustificada' ? (
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shrink-0 ml-1 whitespace-nowrap">
-                                          [Falta Não Justif.]
-                                        </span>
-                                      ) : shift.shiftStatus === 'falta_justificada' ? (
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 font-semibold border border-blue-500/30 shrink-0 ml-1 whitespace-nowrap">
-                                          [Falta Justificada]
-                                        </span>
-                                      ) : (
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30 shrink-0 ml-1 whitespace-nowrap">
-                                          [Concluído]
-                                        </span>
-                                      )}
-                                    </div>
+                                    ) : (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold border border-emerald-500/30 shrink-0">
+                                        Concluído
+                                      </span>
+                                    )}
+
+                                    <span className={`font-bold font-mono shrink-0 ${
+                                      shift.shiftStatus === 'falta_injustificada' || shift.shiftStatus === 'falta_justificada'
+                                        ? 'text-slate-400'
+                                        : 'text-emerald-400'
+                                    }`}>
+                                      +{shift.hours || 12}h
+                                    </span>
                                   </div>
 
-                                  {/* 3. Direita: Botões de ação ("Editar" e "Remover") compactos */}
+                                  {/* Direita: Botões quadrados apenas com ícones (w-7 h-7) */}
                                   {isCoordination && (
-                                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                                    <div className="flex items-center gap-1.5 shrink-0">
                                       <button
                                         type="button"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handleStartEditShift(shift);
                                         }}
-                                        className="px-2 py-0.5 text-[11px] text-slate-300 hover:text-emerald-400 bg-slate-800/70 hover:bg-emerald-500/10 border border-slate-700/80 hover:border-emerald-500/30 rounded transition-colors cursor-pointer flex items-center gap-1"
-                                        title="Editar esta escala"
+                                        className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-emerald-300 bg-slate-800 hover:bg-emerald-500/15 border border-slate-700 hover:border-emerald-500/30 rounded-md transition-colors cursor-pointer"
+                                        title="Editar"
                                       >
-                                        <Pencil className="w-2.5 h-2.5" />
-                                        <span>Editar</span>
+                                        <Pencil className="w-3.5 h-3.5" />
                                       </button>
 
                                       <button
@@ -1207,11 +1206,10 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                                           e.stopPropagation();
                                           handleDeleteShift(shift.id);
                                         }}
-                                        className="px-2 py-0.5 text-[11px] text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/40 rounded transition-colors cursor-pointer flex items-center gap-1"
-                                        title="Remover escala"
+                                        className="w-7 h-7 flex items-center justify-center text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-md transition-colors cursor-pointer"
+                                        title="Remover"
                                       >
-                                        <Trash2 className="w-2.5 h-2.5" />
-                                        <span>Remover</span>
+                                        <Trash2 className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
                                   )}
@@ -1230,8 +1228,8 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
 
         {/* Edit Member Profile Modal Dialog (Triggered by Editar Cadastro button in Header) */}
         {isEditingProfile && (
-          <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 animate-scaleUp">
+          <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-scaleUp">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
@@ -1375,8 +1373,8 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
 
         {/* Monthly Absence Launch Modal (Lançar Falta Justificada / Não Justificada com Referência Mensal Exclusiva) */}
         {absenceModalType && (
-          <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-scaleUp">
+          <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-scaleUp">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2.5">
                   <div className={`p-2 rounded-xl border ${
@@ -1412,13 +1410,13 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
 
               <div className="space-y-4 text-xs">
                 {/* Custom Month/Year Grid Selector (Paleta Escura #1E293B) */}
-                <div className="bg-[#1E293B] border border-slate-700/80 rounded-2xl p-3.5 shadow-inner space-y-3">
+                <div className="bg-[#1E293B] border border-slate-700/80 rounded-2xl p-3 sm:p-3.5 shadow-inner space-y-3">
                   {/* Top Year Selector Bar */}
                   <div className="flex items-center justify-between pb-2.5 border-b border-slate-700/70">
                     <button
                       type="button"
                       onClick={() => handleSelectAbsenceMonthYear(selectedAbsenceMonthIdx, selectedAbsenceYear - 1)}
-                      className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/70 rounded-xl transition-colors cursor-pointer"
+                      className="p-2 text-slate-300 hover:text-white hover:bg-slate-700/70 rounded-xl transition-colors cursor-pointer min-h-[38px] min-w-[38px] flex items-center justify-center"
                       title="Ano anterior"
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -1432,7 +1430,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                             key={yr}
                             type="button"
                             onClick={() => handleSelectAbsenceMonthYear(selectedAbsenceMonthIdx, yr)}
-                            className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer min-h-[38px] ${
                               isYearSelected
                                 ? 'bg-emerald-600 text-white shadow-sm'
                                 : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
@@ -1447,7 +1445,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={() => handleSelectAbsenceMonthYear(selectedAbsenceMonthIdx, selectedAbsenceYear + 1)}
-                      className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700/70 rounded-xl transition-colors cursor-pointer"
+                      className="p-2 text-slate-300 hover:text-white hover:bg-slate-700/70 rounded-xl transition-colors cursor-pointer min-h-[38px] min-w-[38px] flex items-center justify-center"
                       title="Próximo ano"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -1465,7 +1463,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                           key={shortLabel}
                           type="button"
                           onClick={() => handleSelectAbsenceMonthYear(mIdx, selectedAbsenceYear)}
-                          className={`py-2 px-2 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 border ${
+                          className={`py-2 px-1.5 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 border min-h-[46px] active:scale-95 ${
                             isSelected
                               ? 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-emerald-400 shadow-md shadow-emerald-950/50'
                               : isCurrentMonth
@@ -1473,7 +1471,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                               : 'bg-slate-900/70 hover:bg-slate-700/80 text-slate-200 hover:text-white border-slate-700/60'
                           }`}
                         >
-                          <span className="text-xs font-mono tracking-wide">{shortLabel}</span>
+                          <span className="text-xs font-mono tracking-wide font-bold">{shortLabel}</span>
                           <span className={`text-[9px] ${isSelected ? 'text-emerald-100' : 'text-slate-400'}`}>
                             {FULL_MONTH_NAMES[mIdx]}
                           </span>
@@ -1517,11 +1515,11 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                   );
                 })()}
 
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-slate-800">
                   <button
                     type="button"
                     onClick={() => setAbsenceModalType(null)}
-                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium cursor-pointer transition-colors"
+                    className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium cursor-pointer transition-colors flex items-center justify-center"
                   >
                     Cancelar
                   </button>
@@ -1533,7 +1531,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                       setAbsenceModalType(null);
                       handleRegisterShiftWithStatus(targetType, chosenMonth);
                     }}
-                    className={`px-4 py-2 text-white font-semibold rounded-xl text-xs cursor-pointer shadow-sm transition-colors flex items-center gap-1.5 ${
+                    className={`w-full sm:w-auto min-h-[44px] px-4 py-2.5 text-white font-semibold rounded-xl text-xs cursor-pointer shadow-sm transition-colors flex items-center justify-center gap-1.5 active:scale-[0.99] ${
                       absenceModalType === 'falta_justificada'
                         ? 'bg-blue-600 hover:bg-blue-500'
                         : 'bg-rose-600 hover:bg-rose-500'

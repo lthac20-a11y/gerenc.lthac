@@ -28,6 +28,44 @@ import { useAuth } from '../context/AuthContext';
 import { QuickReplacementModal } from './CoordinationModals';
 import { CustomDatePicker } from './CustomDatePicker';
 
+export interface GuidelineItem {
+  id: string;
+  badge: string;
+  titulo: string;
+  tag: string;
+  descricao: string;
+  colorTheme?: 'amber' | 'blue' | 'rose';
+}
+
+const DEFAULT_GUIDELINES: GuidelineItem[] = [
+  {
+    id: 'g1',
+    badge: '1',
+    titulo: '1 Falta no Mês',
+    tag: 'Prazo: Mês seguinte',
+    descricao: 'Deverá ser reposta impreterivelmente no mês imediatamente seguinte à escala faltosa.',
+    colorTheme: 'amber',
+  },
+  {
+    id: 'g2',
+    badge: '2',
+    titulo: '2 Faltas no Mesmo Mês',
+    tag: 'Prazo: 2 meses',
+    descricao: 'O acadêmico terá os próximos 2 meses consecutivos para repor esses 2 plantões.',
+    colorTheme: 'blue',
+  },
+  {
+    id: 'g3',
+    badge: '!',
+    titulo: 'Não Repor no Prazo',
+    tag: 'Penalidade',
+    descricao: 'O descumprimento do prazo regimental resulta em +1 advertência formal no cadastro.',
+    colorTheme: 'rose',
+  },
+];
+
+const STORAGE_DIRETRIZES_KEY = 'lthac_diretrizes_v1';
+
 interface ReplacementsViewProps {
   members: Member[];
   onUpdateMember: (updated: Member) => void;
@@ -42,6 +80,36 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   const { isCoordination } = useAuth();
   const [filter, setFilter] = useState<'pendentes' | 'cumpridas' | 'todas'>('pendentes');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Diretrizes e Prazos Regimentais (Estado Dinâmico e Persistente)
+  const [diretrizes, setDiretrizes] = useState<GuidelineItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_DIRETRIZES_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to parse guidelines', e);
+    }
+    return DEFAULT_GUIDELINES;
+  });
+
+  const [isEditingGuidelines, setIsEditingGuidelines] = useState(false);
+  const [guidelinesDraft, setGuidelinesDraft] = useState<GuidelineItem[]>(diretrizes);
+
+  const handleStartEditingGuidelines = () => {
+    setGuidelinesDraft(JSON.parse(JSON.stringify(diretrizes)));
+    setIsEditingGuidelines(true);
+  };
+
+  const handleCancelEditingGuidelines = () => {
+    setIsEditingGuidelines(false);
+    setGuidelinesDraft(diretrizes);
+  };
+
+  const handleSaveGuidelines = () => {
+    setDiretrizes(guidelinesDraft);
+    localStorage.setItem(STORAGE_DIRETRIZES_KEY, JSON.stringify(guidelinesDraft));
+    setIsEditingGuidelines(false);
+  };
 
   // Expandable members state (map of memberId -> boolean)
   // By default, members start collapsed (closed)
@@ -93,6 +161,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   const allReplacements = members.flatMap(member => member.replacements);
   const pendingCount = allReplacements.filter(r => !r.completed).length;
   const completedCount = allReplacements.filter(r => r.completed).length;
+  const membersWithPending = members.filter(m => m.replacements.some(r => !r.completed)).length;
 
   // Group replacements by Member
   const memberGroups = members
@@ -249,7 +318,7 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-full">
       {feedbackMsg && (
         <div className="bg-emerald-950/80 border border-emerald-700/60 text-emerald-200 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between shadow-lg">
           <span className="flex items-center gap-2">
@@ -267,25 +336,211 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
       )}
 
       {/* Top Banner & Prazos Regimentais */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-3">
-        <h2 className="text-base font-bold text-white flex items-center gap-2 font-display">
-          <Repeat className="w-5 h-5 text-amber-400" />
-          Gestão de Reposições de Plantão por Integrante
-        </h2>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+        {/* Top Header Row: Title & Action Button in Single Row */}
+        <div className="flex items-center justify-between gap-2 flex-nowrap whitespace-nowrap">
+          <div className="flex items-center gap-2 flex-nowrap min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0 p-1.5 shadow-xs">
+              <Repeat className="w-4 h-4" />
+            </div>
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight font-display truncate">
+              Gestão de Reposições
+            </h2>
+          </div>
 
-        <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
-          <h3 className="text-xs text-amber-400 uppercase font-bold tracking-wider">Prazos Regimentais</h3>
-          <div className="text-xs text-slate-200 leading-relaxed font-sans space-y-1">
-            <p>• 1 falta de plantão = repor no mês seguinte.</p>
-            <p>• 2 faltas no mesmo mês = o acadêmico terá os próximos 2 meses seguintes para repor esses 2 plantões.</p>
-            <p className="text-amber-300 font-medium">• Não repor no prazo = +1 advertência</p>
+          {isCoordination && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 active:scale-95"
+              title="Lançar nova reposição manualmente"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Nova Reposição</span>
+            </button>
+          )}
+        </div>
+
+        {/* Faixa Única (3 Colunas) com as métricas compactas */}
+        <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-800/80 text-center">
+          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Pendentes</span>
+            <span className="text-xs font-bold text-amber-400 font-mono">{pendingCount}</span>
+          </div>
+
+          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Integrantes</span>
+            <span className="text-xs font-bold text-white font-mono">{membersWithPending}</span>
+          </div>
+
+          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Cumpridas</span>
+            <span className="text-xs font-bold text-emerald-400 font-mono">{completedCount}</span>
           </div>
         </div>
+
+        {/* Prazos Regimentais: 100% Dinâmico, Editável e Compacto */}
+        {!isEditingGuidelines ? (
+          <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-800/60">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <h3 className="text-xs text-slate-300 font-bold uppercase tracking-wider">
+                  Diretrizes e Prazos Regimentais
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-500 hidden sm:inline font-medium">
+                  Estatuto da Liga do Trauma HAC
+                </span>
+                {isCoordination && (
+                  <button
+                    type="button"
+                    onClick={handleStartEditingGuidelines}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                    title="Editar diretrizes e prazos regimentais"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Editar</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {diretrizes.map((g) => {
+                const badgeColor = g.colorTheme === 'blue'
+                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                  : g.colorTheme === 'rose'
+                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                  : 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+
+                const tagColor = g.colorTheme === 'blue'
+                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                  : g.colorTheme === 'rose'
+                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+
+                return (
+                  <div
+                    key={g.id}
+                    className="p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/60 hover:border-slate-700/80 transition-colors"
+                  >
+                    {/* Linha Superior (flex items-center justify-between gap-2) */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className={`w-5 h-5 rounded text-[10px] font-bold font-mono border flex items-center justify-center shrink-0 ${badgeColor}`}>
+                          {g.badge}
+                        </span>
+                        <h4 className="text-xs font-semibold text-white truncate">
+                          {g.titulo}
+                        </h4>
+                      </div>
+
+                      <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full border shrink-0 whitespace-nowrap ${tagColor}`}>
+                        {g.tag}
+                      </span>
+                    </div>
+
+                    {/* Descrição Alinhada logo abaixo com pl-7 */}
+                    <p className="text-[11px] text-slate-400 leading-snug pl-7 mt-1">
+                      {g.descricao}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Modo de Edição de Diretrizes */
+          <div className="bg-slate-950/80 border border-emerald-500/40 rounded-xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs text-white font-bold uppercase tracking-wider">
+                  Editar Diretrizes Regimentais
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelEditingGuidelines}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveGuidelines}
+                  className="px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer shadow-xs active:scale-95"
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {guidelinesDraft.map((item, idx) => (
+                <div key={item.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={item.badge}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setGuidelinesDraft(prev => prev.map((g, i) => i === idx ? { ...g, badge: val } : g));
+                      }}
+                      placeholder="Ícone"
+                      className="w-10 h-8 text-center text-xs font-bold font-mono bg-slate-950 border border-slate-700 rounded-lg text-amber-400 focus:outline-none focus:border-emerald-500 shrink-0"
+                      title="Símbolo ou número do badge"
+                    />
+
+                    <input
+                      type="text"
+                      value={item.titulo}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setGuidelinesDraft(prev => prev.map((g, i) => i === idx ? { ...g, titulo: val } : g));
+                      }}
+                      placeholder="Título da Regra"
+                      className="flex-1 min-w-0 h-8 px-2.5 text-xs font-semibold bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-emerald-500"
+                    />
+
+                    <input
+                      type="text"
+                      value={item.tag}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setGuidelinesDraft(prev => prev.map((g, i) => i === idx ? { ...g, tag: val } : g));
+                      }}
+                      placeholder="Prazo / Penalidade"
+                      className="w-36 h-8 px-2.5 text-xs bg-slate-950 border border-slate-700 rounded-lg text-amber-300 font-medium focus:outline-none focus:border-emerald-500 shrink-0"
+                    />
+                  </div>
+
+                  <textarea
+                    value={item.descricao}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setGuidelinesDraft(prev => prev.map((g, i) => i === idx ? { ...g, descricao: val } : g));
+                    }}
+                    placeholder="Descrição explicativa da diretriz..."
+                    rows={2}
+                    className="w-full text-xs p-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-emerald-500 leading-snug"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filter, Search & Accordion Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl">
-        <div className="flex items-center gap-1 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 bg-slate-900 border border-slate-800 p-2.5 sm:p-3.5 rounded-2xl w-full max-w-full shadow-sm">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full sm:w-auto flex-nowrap shrink-0">
           {[
             { id: 'pendentes', label: 'Pendentes', count: pendingCount, activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
             { id: 'cumpridas', label: 'Cumpridas', count: completedCount, activeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
@@ -294,14 +549,14 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
             <button
               key={tab.id}
               onClick={() => setFilter(tab.id as any)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 ${
                 filter === tab.id
                   ? `${tab.activeClass} border shadow-sm`
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
               }`}
             >
               <span>{tab.label}</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800">
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 font-mono font-bold">
                 {tab.count}
               </span>
             </button>
@@ -311,107 +566,129 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
 
           <button
             onClick={expandAll}
-            className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            className="min-h-[40px] px-2.5 py-1 text-xs text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0 whitespace-nowrap"
           >
-            Expandir Todos
+            Expandir
           </button>
           <button
             onClick={collapseAll}
-            className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            className="min-h-[40px] px-2.5 py-1 text-xs text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0 whitespace-nowrap"
           >
-            Recolher Todos
+            Recolher
           </button>
         </div>
 
-        <div className="relative">
+        <div className="relative w-full sm:w-64">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por nome do integrante..."
+            placeholder="Buscar integrante..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="pl-8 pr-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full min-h-[42px] pl-8 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
         </div>
       </div>
 
       {/* Grouped Replacements Accordion List */}
-      <div className="space-y-3 pb-16">
+      <div className="space-y-2 pb-16">
         {memberGroups.length === 0 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center text-slate-400 text-xs">
-            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs">
+            <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
             Nenhuma reposição pendente ou cumprida para este filtro.
           </div>
         ) : (
           memberGroups.map(({ member, replacements, pendingRepsCount, completedRepsCount }) => {
             const isExpanded = Boolean(expandedMembers[member.id]);
+            const hasAnyOverdueReplacement = member.replacements.some(rep => {
+              if (rep.completed) return false;
+              const originMonth = rep.deadlineMonth || 'out/26';
+              const totalJustifiedInMonth = member.justifiedAbsences.filter(a => (a.monthKey || 'out/26') === originMonth).length;
+              const totalUnjustifiedInMonth = member.unjustifiedAbsences.filter(a => (a.monthKey || 'out/26') === originMonth).length;
+              const totalShiftsAbsencesInMonth = member.shifts.filter(s => (s.monthKey || 'out/26') === originMonth && (s.shiftStatus === 'falta_justificada' || s.shiftStatus === 'falta_injustificada' || s.description?.includes('Falta'))).length;
+              const totalReplacementsInMonth = member.replacements.filter(r => (r.deadlineMonth || 'out/26') === originMonth).length;
+
+              const absencesInSameMonth = Math.max(
+                rep.originalAbsenceCountInMonth || 1,
+                totalJustifiedInMonth + totalUnjustifiedInMonth,
+                totalShiftsAbsencesInMonth,
+                totalReplacementsInMonth
+              );
+
+              const { isOverdue } = getReplacementDeadlineInfo(
+                originMonth, 
+                absencesInSameMonth, 
+                rep.fixedDeadlineMonthKey
+              );
+              return isOverdue;
+            });
 
             return (
               <div
                 key={member.id}
-                className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm transition-all"
+                className={`bg-slate-900 border rounded-xl overflow-hidden shadow-xs transition-all ${
+                  hasAnyOverdueReplacement ? 'border-rose-500/60 bg-gradient-to-r from-slate-900 via-slate-900 to-rose-950/20' : 'border-slate-800'
+                }`}
               >
                 {/* Member Header Card (Clickable to Expand/Collapse) */}
                 <div
                   onClick={() => toggleExpand(member.id)}
-                  className="p-4 bg-slate-900 hover:bg-slate-800/60 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 select-none"
+                  className="p-3 sm:p-3.5 bg-slate-900 hover:bg-slate-800/60 transition-colors cursor-pointer flex items-center justify-between gap-3 select-none flex-nowrap"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div 
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelectMember(member);
                       }}
-                      className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white text-sm hover:border-emerald-500 transition-colors shrink-0"
+                      className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white text-xs hover:border-emerald-500 transition-colors shrink-0"
                       title="Ver ficha completa do membro"
                     >
                       {member.name.charAt(0)}
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
                         <h3 
                           onClick={(e) => {
                             e.stopPropagation();
                             onSelectMember(member);
                           }}
-                          className="text-sm font-bold text-white hover:text-emerald-400 transition-colors cursor-pointer truncate font-display"
+                          className="text-xs sm:text-sm font-bold text-white hover:text-emerald-400 transition-colors cursor-pointer truncate font-display"
                         >
                           {member.name}
                         </h3>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-medium">
-                          {member.role}
-                        </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Horas totais no cadastro: <strong className="text-white font-mono">{member.accumulatedHours}h</strong>
+                      <p className="text-[11px] text-slate-400 mt-0.5 whitespace-nowrap">
+                        Total cadastrado: <strong className="text-white font-mono">{member.accumulatedHours}h</strong>
                       </p>
                     </div>
                   </div>
 
                   {/* Summary Badges & Expand Icon */}
-                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                  <div className="flex items-center gap-2 shrink-0">
                     {pendingRepsCount > 0 && (
-                      <span className="text-xs px-3 py-1 rounded-full font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        {pendingRepsCount} {pendingRepsCount === 1 ? 'Reposição Pendente' : 'Reposições Pendentes'}
+                      <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 whitespace-nowrap">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span className="hidden sm:inline">{pendingRepsCount} {pendingRepsCount === 1 ? 'Reposição Pendente' : 'Reposições Pendentes'}</span>
+                        <span className="inline sm:hidden">{pendingRepsCount} Rep.</span>
                       </span>
                     )}
 
                     {completedRepsCount > 0 && (
-                      <span className="text-xs px-3 py-1 rounded-full font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        {completedRepsCount} {completedRepsCount === 1 ? 'Cumprida' : 'Cumpridas'}
+                      <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 whitespace-nowrap">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>{completedRepsCount} {completedRepsCount === 1 ? 'Cumprida' : 'Cumpridas'}</span>
                       </span>
                     )}
 
                     {pendingRepsCount === 0 && completedRepsCount === 0 && (
-                      <span className="text-xs px-3 py-1 rounded-full font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                      <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-slate-800 text-slate-400 border border-slate-700 whitespace-nowrap">
                         Sem pendências
                       </span>
                     )}
 
-                    <div className="p-1.5 text-slate-400 bg-slate-800/80 rounded-lg border border-slate-700/60">
+                    <div className="p-1.5 text-slate-400 bg-slate-800/80 rounded-md border border-slate-700/60 shrink-0">
                       {isExpanded ? (
                         <ChevronUp className="w-4 h-4 text-emerald-400" />
                       ) : (
@@ -423,14 +700,14 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
 
                 {/* Expandable Body with Replacement Items */}
                 {isExpanded && (
-                  <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 space-y-3 animate-fadeIn">
-                    <div className="flex items-center justify-between pb-1 border-b border-slate-800/60 text-[11px] text-slate-400 uppercase font-semibold tracking-wider">
+                  <div className="p-2.5 sm:p-3 bg-slate-950/60 border-t border-slate-800/80 space-y-2 animate-fadeIn">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-800/60 text-[10px] text-slate-400 uppercase font-semibold tracking-wider">
                       <span>Lista de Pendências de Reposição ({replacements.length})</span>
                       <span>Membro ID: {member.id}</span>
                     </div>
 
                     {replacements.length === 0 ? (
-                      <div className="p-4 text-center text-slate-400 text-xs italic bg-slate-900/40 rounded-xl">
+                      <div className="p-3 text-center text-slate-400 text-xs italic bg-slate-900/40 rounded-lg">
                         Nenhuma reposição corresponde ao filtro selecionado para este membro.
                       </div>
                     ) : (
@@ -457,11 +734,11 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                         return (
                           <div
                             key={rep.id}
-                            className={`bg-slate-900 border rounded-xl p-3.5 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                            className={`bg-slate-900 border rounded-lg p-2.5 sm:p-3 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
                               rep.completed
                                 ? 'border-slate-800 opacity-85'
                                 : isOverdue
-                                ? 'border-rose-500/60 bg-gradient-to-r from-slate-900 via-slate-900 to-rose-950/20 shadow-md shadow-rose-950/20'
+                                ? 'border-rose-500/60 bg-gradient-to-r from-slate-900 via-slate-900 to-rose-950/20 shadow-xs'
                                 : 'border-amber-800/40 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/10'
                             }`}
                           >
@@ -574,12 +851,12 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
 
                           {/* Action Buttons & Completion Input */}
                           {isCoordination ? (
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end md:self-center">
+                            <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800 shrink-0">
                               {!rep.completed ? (
                                 <>
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-2 flex-1 sm:flex-none justify-between sm:justify-start">
                                     <span className="text-[11px] text-slate-300 whitespace-nowrap font-medium">Data feita:</span>
-                                    <div className="w-36">
+                                    <div className="w-full sm:w-36">
                                       <CustomDatePicker
                                         value={completionDates[rep.id] ?? new Date().toLocaleDateString('pt-BR')}
                                         onChange={val => setCompletionDates(prev => ({ ...prev, [rep.id]: val }))}
@@ -588,10 +865,10 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
                                     <button
                                       onClick={() => handleComplete(member.id, rep.id, completionDates[rep.id] || new Date().toLocaleDateString('pt-BR'))}
-                                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer whitespace-nowrap"
+                                      className="flex-1 sm:flex-none min-h-[34px] inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-[0.99]"
                                     >
                                       <CheckCircle2 className="w-3.5 h-3.5" />
                                       Concluir (+{rep.scheduledHours || 12}h)
@@ -600,54 +877,54 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                                     {!rep.warningIssuedForDelay && (
                                       <button
                                         onClick={() => handleLateWarning(member.id, rep.id)}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/70 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                                        className="min-h-[34px] inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800/70 rounded-lg transition-colors cursor-pointer whitespace-nowrap active:scale-[0.99]"
                                         title="A não reposição acarreta em mais uma advertência"
                                       >
                                         +1 ADV
                                       </button>
                                     )}
 
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingReplacement({ memberId: member.id, replacement: rep })}
-                                        className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
-                                        title="Editar reposição"
-                                      >
-                                        <Pencil className="w-4 h-4" />
-                                      </button>
-
-                                      <button
-                                        onClick={() => handleDeleteReplacement(member.id, rep.id)}
-                                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                                        title="Remover reposição"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
-                                      <CheckCircle2 className="w-4 h-4" />
-                                      Horas Computadas
-                                    </span>
                                     <button
                                       type="button"
                                       onClick={() => setEditingReplacement({ memberId: member.id, replacement: rep })}
-                                      className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
+                                      className="min-h-[34px] min-w-[34px] flex items-center justify-center p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer border border-slate-700/80"
                                       title="Editar reposição"
                                     >
-                                      <Pencil className="w-4 h-4" />
+                                      <Pencil className="w-3.5 h-3.5" />
                                     </button>
+
                                     <button
                                       onClick={() => handleDeleteReplacement(member.id, rep.id)}
-                                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                      className="min-h-[34px] min-w-[34px] flex items-center justify-center p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer border border-slate-700/80"
                                       title="Remover reposição"
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
-                                )}
+                                </>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    Horas Computadas
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingReplacement({ memberId: member.id, replacement: rep })}
+                                    className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
+                                    title="Editar reposição"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteReplacement(member.id, rep.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                    title="Remover reposição"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="shrink-0 self-end md:self-center">

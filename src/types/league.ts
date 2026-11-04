@@ -142,3 +142,39 @@ export const MONTH_COLUMNS = [
   'nov/26',
   'dez/26',
 ];
+
+export interface RegimentalRule {
+  id: string;
+  badge: string;
+  badgeColor?: string;
+  title: string;
+  tag: string;
+  description: string;
+}
+
+export const DEFAULT_REGIMENTAL_RULES: RegimentalRule[] = [
+  {
+    id: 'rule-1',
+    badge: '1',
+    badgeColor: 'amber',
+    title: '1 Falta no Mês',
+    tag: 'Prazo: Mês seguinte',
+    description: 'Deverá ser reposta impreterivelmente no mês imediatamente seguinte à escala faltosa.',
+  },
+  {
+    id: 'rule-2',
+    badge: '2',
+    badgeColor: 'blue',
+    title: '2 Faltas no Mesmo Mês',
+    tag: 'Prazo: 2 meses',
+    description: 'O acadêmico terá os próximos 2 meses consecutivos para repor esses 2 plantões.',
+  },
+  {
+    id: 'rule-3',
+    badge: '!',
+    badgeColor: 'rose',
+    title: 'Não Repor no Prazo',
+    tag: 'Penalidade',
+    description: 'O descumprimento do prazo regimental resulta em +1 advertência formal no cadastro.',
+  },
+];

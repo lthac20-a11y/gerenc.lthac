@@ -724,7 +724,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white w-full max-w-full overflow-x-hidden">
       {/* Header with Navigation & Quick Actions */}
       <Header
         currentTab={currentTab}
@@ -742,7 +742,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-8 pb-20">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-28 md:pb-16 overflow-x-hidden">
         {currentTab === 'dashboard' && (
           <DashboardView
             members={members}
@@ -764,6 +764,8 @@ export default function App() {
             onSelectMember={setSelectedMember}
             onOpenAddMember={() => setIsAddMemberOpen(true)}
             onOpenCertificateModal={setCertificateMember}
+            onUpdateMember={handleUpdateMember}
+            onOpenSettings={() => setIsSettingsOpen(true)}
             onOpenAddShiftForMember={(memberId) => {
               setShiftModalMemberIds([memberId]);
               setIsAddShiftOpen(true);

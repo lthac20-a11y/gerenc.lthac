@@ -8,15 +8,18 @@ import {
   Clock, 
   ArrowUpDown,
   TrendingUp,
-  Users
+  Users,
+  Pencil,
+  X
 } from 'lucide-react';
-import { Member, LeagueConfig } from '../types/league';
+import { Member, LeagueConfig, RoleInLeague, MemberStatus } from '../types/league';
 import { 
   checkCertificateEligibility, 
   calculateActiveTime,
   isMemberEligibleForCertificate 
 } from '../utils/leagueCalculations';
 import { useAuth } from '../context/AuthContext';
+import { CustomDatePicker } from './CustomDatePicker';
 
 interface MembersViewProps {
   members: Member[];
@@ -24,6 +27,8 @@ interface MembersViewProps {
   onSelectMember: (member: Member) => void;
   onOpenAddMember: () => void;
   onOpenCertificateModal: (member: Member) => void;
+  onUpdateMember?: (updated: Member) => void;
+  onOpenSettings?: () => void;
   onOpenAddShiftForMember?: (memberId: string) => void;
   onOpenAddReplacementForMember?: (memberId: string) => void;
   onOpenAddWarningForMember?: (memberId: string) => void;
@@ -35,11 +40,22 @@ export const MembersView: React.FC<MembersViewProps> = ({
   config,
   onSelectMember,
   onOpenAddMember,
+  onUpdateMember,
+  onOpenSettings,
 }) => {
   const { isCoordination } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<'name' | 'hours-desc' | 'hours-asc' | 'date-desc' | 'adv'>('hours-desc');
+
+  // State for direct member edit modal
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState<RoleInLeague>('Ligante');
+  const [editEntryDate, setEditEntryDate] = useState('');
+  const [editHours, setEditHours] = useState(0);
+  const [editEmail, setEditEmail] = useState('');
+  const [editStatus, setEditStatus] = useState<MemberStatus>('ativo');
 
   // Compute certificate eligibility map
   const eligibilitiesMap = useMemo(() => {
@@ -93,169 +109,286 @@ export const MembersView: React.FC<MembersViewProps> = ({
   const pendingReplacementsCount = members.filter(m => m.replacements.some(r => !r.completed)).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-full">
       {/* Top Header & Quick Metrics */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight font-display">
-                Integrantes & Banco de Horas
-              </h2>
-              <span className="text-xs sm:text-sm text-emerald-400 font-medium">
-                · Meta de Certificação: <strong className="font-mono">{config.minHoursForCertificate}h</strong>
-              </span>
-            </div>
-            <p className="text-sm text-slate-300 mt-1">
-              Acompanhamento detalhado de carga horária, tempo de permanência, assiduidade e reposições
-            </p>
-          </div>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-sm relative">
+        {/* Top Header Row: Title + Add Member Button */}
+        <div className="flex items-center justify-between gap-2.5 flex-nowrap whitespace-nowrap">
+          <h2 className="text-base sm:text-lg font-bold text-white tracking-tight font-display shrink-0">
+            Integrantes
+          </h2>
 
           {/* Add Member Button (Coordination Only) */}
           {isCoordination && (
-            <div className="flex items-center gap-3 self-start md:self-center">
-              <button
-                type="button"
-                onClick={onOpenAddMember}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-sm transition-all cursor-pointer whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Cadastrar Integrante</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onOpenAddMember}
+              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Cadastrar</span>
+            </button>
           )}
         </div>
 
-        {/* High-Visibility Summary Metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-5">
-          <div className="bg-slate-950/70 border border-slate-800/80 p-4 rounded-xl flex items-center gap-3.5">
-            <div className="p-2.5 bg-slate-800 text-slate-200 rounded-xl shrink-0">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-xs text-slate-300 font-medium block">Total de Integrantes</span>
-              <span className="text-xl sm:text-2xl font-bold text-white font-mono tabular-nums">{members.length}</span>
-            </div>
+        {/* Faixa Única (1 Linha) com 4 métricas compactas */}
+        <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-slate-800/80 text-center">
+          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Total</span>
+            <span className="text-xs font-bold text-white font-mono">{members.length}</span>
           </div>
 
-          <div className="bg-slate-950/70 border border-slate-800/80 p-4 rounded-xl flex items-center gap-3.5">
-            <div className="p-2.5 bg-emerald-500/15 text-emerald-400 rounded-xl shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-xs text-slate-300 font-medium block">Horas Acumuladas</span>
-              <span className="text-xl sm:text-2xl font-bold text-emerald-400 font-mono tabular-nums">{totalHours}h</span>
-            </div>
+          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Horas</span>
+            <span className="text-xs font-bold text-emerald-400 font-mono">{totalHours}h</span>
           </div>
 
-          {isCoordination ? (
-            <div className="bg-slate-950/70 border border-slate-800/80 p-4 rounded-xl flex items-center gap-3.5">
-              <div className="p-2.5 bg-emerald-500/15 text-emerald-400 rounded-xl shrink-0">
-                <Award className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xs text-slate-300 font-medium block">Aptos ao Certificado</span>
-                <span className="text-xl sm:text-2xl font-bold text-white font-mono tabular-nums">
-                  {eligibleCount} <span className="text-xs text-slate-400 font-normal">de {members.length}</span>
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-slate-950/70 border border-slate-800/80 p-4 rounded-xl flex items-center gap-3.5">
-              <div className="p-2.5 bg-emerald-500/15 text-emerald-400 rounded-xl shrink-0">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xs text-slate-300 font-medium block">Média por Integrante</span>
-                <span className="text-xl sm:text-2xl font-bold text-white font-mono tabular-nums">
-                  {members.length > 0 ? Math.round(totalHours / members.length) : 0}h
-                </span>
-              </div>
-            </div>
-          )}
+          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Aptos</span>
+            <span className="text-xs font-bold text-white font-mono">{eligibleCount}/{members.length}</span>
+          </div>
 
-          <div className="bg-slate-950/70 border border-slate-800/80 p-4 rounded-xl flex items-center gap-3.5">
-            <div className="p-2.5 bg-amber-500/15 text-amber-400 rounded-xl shrink-0">
-              <Repeat className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-xs text-slate-300 font-medium block">Com Reposição Pendente</span>
-              <span className="text-xl sm:text-2xl font-bold text-amber-400 font-mono tabular-nums">{pendingReplacementsCount}</span>
-            </div>
+          <div className="bg-slate-950/70 border border-slate-800/80 p-1.5 sm:p-2 rounded-xl min-w-0">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">Repos.</span>
+            <span className="text-xs font-bold text-amber-400 font-mono">{pendingReplacementsCount}</span>
           </div>
         </div>
       </div>
 
       {/* Search, Filters & Sort Controls Bar */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-        {/* 1º: Campo de Busca (Busca) */}
-        <div className="relative flex-1 min-w-[220px] max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Buscar integrante por nome ou função..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-9 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm cursor-pointer"
-            >
-              ✕
-            </button>
-          )}
-        </div>
+      <div className="bg-slate-900 border border-slate-800 p-2.5 sm:p-3 rounded-2xl w-full max-w-full shadow-sm">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
+          
+          {/* Search + Sort group for tablet/mobile (or Left Search on >= xl) */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {/* Campo de Busca Compacto */}
+            <div className="relative flex-1 min-w-[150px] max-w-full xl:max-w-xs">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Buscar por nome..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full min-h-[36px] h-9 pl-9 pr-8 py-1 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer p-0.5"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-        {/* 2º a 5º: Botões de Filtro Ordenados [Todos -> Ligantes -> Coordenação -> Aptos] */}
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
-          {[
-            { id: 'todos', label: 'Todos', count: members.length },
-            { id: 'ligantes', label: 'Ligantes', count: members.filter(m => m.role === 'Ligante').length },
-            { id: 'coordenacao', label: 'Coordenação', count: members.filter(m => m.role === 'Coordenação').length },
-            { id: 'aptos', label: `Aptos (≥${config.minHoursForCertificate}h)`, count: eligibleCount },
-          ].map((tab) => {
-            const isActive = filterType === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setFilterType(tab.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
-                  isActive
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
-                    : 'bg-slate-950/60 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
-                }`}
+            {/* Sort Dropdown no Mobile/Tablet (< xl): fica ao lado da busca sem criar linha improdutiva */}
+            <div className="flex xl:hidden items-center gap-1 bg-slate-950 border border-slate-700/80 px-2 py-1 rounded-xl text-xs text-slate-200 shrink-0 min-h-[36px] h-9">
+              <ArrowUpDown className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer text-xs"
               >
-                <span>{tab.label}</span>
-                <span className={`text-xs font-mono tabular-nums ${isActive ? 'text-emerald-200 font-bold' : 'text-slate-400'}`}>
-                  ({tab.count})
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                <option value="hours-desc" className="bg-slate-900">Maior carga</option>
+                <option value="hours-asc" className="bg-slate-900">Menor carga</option>
+                <option value="name" className="bg-slate-900">A-Z</option>
+                <option value="adv" className="bg-slate-900">Mais ADV</option>
+              </select>
+            </div>
+          </div>
 
-        {/* Sort Select */}
-        <div className="flex items-center gap-2 bg-slate-950 border border-slate-700/80 px-3.5 py-2 rounded-xl text-sm text-slate-200 shrink-0 self-start xl:self-center">
-          <ArrowUpDown className="w-4 h-4 text-emerald-400 shrink-0" />
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-transparent text-white font-medium focus:outline-none cursor-pointer text-xs sm:text-sm"
-          >
-            <option value="hours-desc" className="bg-slate-900">Maior carga horária</option>
-            <option value="hours-asc" className="bg-slate-900">Menor carga horária</option>
-            <option value="name" className="bg-slate-900">Ordem alfabética (A-Z)</option>
-            <option value="adv" className="bg-slate-900">Mais advertências</option>
-          </select>
+          {/* Botões de Filtro Ajustados */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full xl:w-auto flex-nowrap shrink-0">
+            {[
+              { id: 'todos', label: 'Todos', count: members.length },
+              { id: 'aptos', label: 'Aptos', count: eligibleCount },
+              { id: 'reposicoes', label: 'Reposição', count: pendingReplacementsCount },
+              { id: 'advertencias', label: 'Com ADV', count: members.filter(m => m.warnings.some(w => w.active)).length },
+            ].map((tab) => {
+              const isActive = filterType === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setFilterType(tab.id)}
+                  className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer shrink-0 active:scale-95 ${
+                    isActive
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
+                      : 'bg-slate-950/60 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className={`text-[11px] font-mono tabular-nums ${isActive ? 'text-emerald-200 font-bold' : 'text-slate-400'}`}>
+                    ({tab.count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Sort Dropdown no Desktop (visível apenas em telas >= xl ao lado dos filtros) */}
+          <div className="hidden xl:flex items-center gap-1.5 bg-slate-950 border border-slate-700/80 px-2.5 py-1 rounded-xl text-xs text-slate-200 shrink-0 min-h-[36px] h-9">
+            <ArrowUpDown className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="bg-transparent text-white font-medium focus:outline-none cursor-pointer text-xs"
+            >
+              <option value="hours-desc" className="bg-slate-900">Maior carga horária</option>
+              <option value="hours-asc" className="bg-slate-900">Menor carga horária</option>
+              <option value="name" className="bg-slate-900">Ordem alfabética (A-Z)</option>
+              <option value="adv" className="bg-slate-900">Mais advertências</option>
+            </select>
+          </div>
+
         </div>
       </div>
 
-      {/* SPREADSHEET TABLE (FIXED DEFAULT VIEW) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mb-16">
+      {/* MOBILE MEMBER CARDS (< 768px) - ULTRA COMPACT HIGH DENSITY VIEW */}
+      <div className="block md:hidden space-y-2 sm:space-y-2.5 mb-16">
+        {filteredMembers.length === 0 ? (
+          <div className="p-6 text-center text-slate-300 text-xs sm:text-sm bg-slate-900 border border-slate-800 rounded-xl">
+            Nenhum integrante encontrado com os filtros selecionados.
+          </div>
+        ) : (
+          filteredMembers.map((member) => {
+            const activeTime = calculateActiveTime(member.entryDate);
+            const activeWarnings = member.warnings.filter(w => w.active).length;
+            const fjCount = member.justifiedAbsences.length;
+            const fnjCount = member.unjustifiedAbsences.length;
+            const pendingRep = member.replacements.filter(r => !r.completed).length;
+            const progressPercent = Math.min(100, Math.round((member.accumulatedHours / config.minHoursForCertificate) * 100));
+            const isGoalMet = member.accumulatedHours >= config.minHoursForCertificate;
+            const isApto = isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150);
+
+            // Cálculo do tempo de permanência e meta para estar Apto
+            const requiredMonths = config.minActiveMonthsForCertificate || 12;
+            const timePercent = Math.min(100, Math.round((activeTime.totalMonths / requiredMonths) * 100));
+            const isTimeMet = activeTime.totalMonths >= requiredMonths || activeTime.totalDays >= 365;
+
+            return (
+              <div
+                key={member.id}
+                onClick={() => onSelectMember(member)}
+                className="bg-slate-900 border border-slate-800/90 hover:border-emerald-500/40 rounded-xl p-2.5 sm:p-3 shadow-xs transition-all cursor-pointer active:scale-[0.99] space-y-2"
+              >
+                {/* Linha 1: Avatar (w-7 h-7) + Nome Completo com truncate + Badge Apto */}
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {/* Avatar 28x28px */}
+                    <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700/80 flex items-center justify-center font-bold text-xs text-white shrink-0 font-display">
+                      {member.name.charAt(0)}
+                    </div>
+
+                    {/* Nome Completo com truncate para máximo aproveitamento horizontal */}
+                    <span className="font-bold text-white text-xs sm:text-sm truncate flex-1 min-w-0 font-display">
+                      {member.name}
+                    </span>
+                  </div>
+
+                  {/* Badge "✓ Apto" alinhada à direita */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isApto ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
+                        <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                        <span>Apto ✓</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-medium bg-slate-950 text-slate-500 border border-slate-800 shrink-0">
+                        Não Apto
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Duas Barras de Progresso Empilhadas (Horas + Tempo de Permanência) */}
+                <div className="space-y-1.5 pt-0.5">
+                  {/* Bloco 1 (Horas): Texto compacto + barra de horas (h-1.5) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] font-mono leading-none">
+                      <span className="text-slate-400 font-sans text-[11px]">Horas</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-bold ${isGoalMet ? 'text-emerald-400' : 'text-white'}`}>
+                          {member.accumulatedHours}h / {config.minHoursForCertificate}h
+                        </span>
+                        <span className="text-slate-500">•</span>
+                        <span className={`font-bold ${isGoalMet ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {progressPercent}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800/80">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          isGoalMet ? 'bg-emerald-500' : 'bg-emerald-400'
+                        }`}
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bloco 2 (Tempo): Tempo atual + meta e porcentagem + barra de tempo (h-1.5) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] font-mono leading-none">
+                      <span className="text-slate-400 font-sans text-[11px] truncate">{activeTime.formatted}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-bold text-blue-400">
+                          Meta: {requiredMonths >= 12 ? '1 ano' : `${requiredMonths}m`}
+                        </span>
+                        <span className="text-slate-500">•</span>
+                        <span className="font-bold text-blue-400">
+                          {timePercent}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800/80">
+                      <div
+                        className="h-full rounded-full transition-all duration-300 bg-blue-500"
+                        style={{ width: `${timePercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Linha 3: Grade de Contadores Compacta (FJ, FNJ, ADV, REP em 4 colunas horizontais) */}
+                <div className="grid grid-cols-4 gap-1 text-center font-mono py-1">
+                  <div className={`py-1 px-1 rounded-md border text-xs flex items-center justify-center gap-1 ${
+                    fjCount > 0 ? 'bg-blue-500/15 text-blue-300 border-blue-500/30 font-bold' : 'bg-slate-950/60 text-slate-500 border-slate-800/80'
+                  }`}>
+                    <span className="text-[10px] font-sans font-medium text-slate-400">FJ</span>
+                    <span>{fjCount}</span>
+                  </div>
+
+                  <div className={`py-1 px-1 rounded-md border text-xs flex items-center justify-center gap-1 ${
+                    fnjCount > 0 ? 'bg-rose-500/15 text-rose-300 border-rose-500/30 font-bold' : 'bg-slate-950/60 text-slate-500 border-slate-800/80'
+                  }`}>
+                    <span className="text-[10px] font-sans font-medium text-slate-400">FNJ</span>
+                    <span>{fnjCount}</span>
+                  </div>
+
+                  <div className={`py-1 px-1 rounded-md border text-xs flex items-center justify-center gap-1 ${
+                    activeWarnings > 0 ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 font-bold' : 'bg-slate-950/60 text-slate-500 border-slate-800/80'
+                  }`}>
+                    <span className="text-[10px] font-sans font-medium text-slate-400">ADV</span>
+                    <span>{activeWarnings}</span>
+                  </div>
+
+                  <div className={`py-1 px-1 rounded-md border text-xs flex items-center justify-center gap-1 ${
+                    pendingRep > 0 ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 font-bold' : 'bg-slate-950/60 text-slate-500 border-slate-800/80'
+                  }`}>
+                    <span className="text-[10px] font-sans font-medium text-slate-400">REP</span>
+                    <span>{pendingRep}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* SPREADSHEET TABLE (DESKTOP VIEW >= 768px) */}
+      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mb-16">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1060px]">
             <thead>
@@ -263,10 +396,10 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 <th className="py-4 px-5 text-left w-[24%]">Integrante</th>
                 <th className="py-4 px-4 text-left w-[14%]">Admissão & Tempo</th>
                 <th className="py-4 px-4 text-left w-[18%]">Carga Horária</th>
-                <th className="py-4 px-4 text-center w-[12%]">Faltas (FJ / FNJ)</th>
-                <th className="py-4 px-3 text-center w-[7%]">ADV</th>
-                <th className="py-4 px-4 text-center w-[11%]">Reposições</th>
-                <th className="py-4 px-4 text-center w-[14%]">Certificação</th>
+                <th className="py-4 px-4 text-center w-[11%]">Faltas (FJ/FNJ)</th>
+                <th className="py-4 px-3 text-center w-[6%]">ADV</th>
+                <th className="py-4 px-4 text-center w-[10%]">Reposições</th>
+                <th className="py-4 px-4 text-center w-[13%]">Certificação</th>
               </tr>
             </thead>
 
@@ -298,25 +431,15 @@ export const MembersView: React.FC<MembersViewProps> = ({
                       {/* 1. Integrante (Nome + Cargo bem visíveis) */}
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-3.5">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 border transition-colors ${
-                            member.role === 'Coordenação'
-                              ? 'bg-purple-500/15 border-purple-500/40 text-purple-200'
-                              : 'bg-slate-800 border-slate-700 text-white group-hover:border-emerald-500/60'
-                          }`}>
+                          <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-white group-hover:border-emerald-500/60 flex items-center justify-center font-bold text-xs shrink-0 transition-colors font-display">
                             {member.name.charAt(0)}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white group-hover:text-emerald-400 transition-colors text-base truncate">
-                                {member.name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5 text-xs">
-                              <span className={member.role === 'Coordenação' ? 'text-purple-300 font-semibold' : 'text-slate-300 font-medium'}>
-                                {member.role}
-                              </span>
-                              <span className="text-slate-600">·</span>
-                              <span className="text-slate-400 font-mono">#{index + 1}</span>
+                            <span className="font-bold text-white group-hover:text-emerald-400 transition-colors text-sm sm:text-base break-words font-display">
+                              {member.name}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400 font-mono">
+                              <span>#{index + 1}</span>
                             </div>
                           </div>
                         </div>
@@ -442,6 +565,152 @@ export const MembersView: React.FC<MembersViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Direct Edit Member Modal Dialog (Triggered by pencil on member cards/rows) */}
+      {editingMember && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Editar Dados do Integrante</h3>
+                  <p className="text-[11px] text-slate-400">{editingMember.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingMember(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!editingMember) return;
+                const updated: Member = {
+                  ...editingMember,
+                  name: editName.trim(),
+                  role: editRole,
+                  entryDate: editEntryDate.trim(),
+                  accumulatedHours: Number(editHours),
+                  email: editEmail.trim(),
+                  status: editStatus,
+                };
+                if (onUpdateMember) {
+                  onUpdateMember(updated);
+                }
+                setEditingMember(null);
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
+                    Nome Completo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
+                    Cargo / Função *
+                  </label>
+                  <select
+                    value={editRole}
+                    onChange={e => setEditRole(e.target.value as RoleInLeague)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="Ligante">Ligante</option>
+                    <option value="Coordenação">Coordenação</option>
+                  </select>
+                </div>
+
+                <div>
+                  <CustomDatePicker
+                    label="Data de Entrada / Admissão"
+                    required
+                    value={editEntryDate}
+                    onChange={val => setEditEntryDate(val)}
+                    format="BR"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
+                    Horas Totais Acumuladas *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={editHours}
+                    onChange={e => setEditHours(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
+                    E-mail de Contato
+                  </label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={e => setEditEmail(e.target.value)}
+                    placeholder="exemplo@gmail.com"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">
+                    Status na Liga
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={e => setEditStatus(e.target.value as MemberStatus)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="ativo">Ativo</option>
+                    <option value="licenciado">Licenciado</option>
+                    <option value="egresso">Egresso</option>
+                    <option value="desligado">Desligado</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-sm transition-colors flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Salvar Alterações</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

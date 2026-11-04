@@ -116,8 +116,8 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
   const sampleDeadlineTwo = calculateReplacementDeadline(monthKey, 2);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-xl w-full p-4 sm:p-5 shadow-2xl relative space-y-3.5 my-auto max-h-[96vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-6 overflow-y-auto">
+      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl max-w-full sm:max-w-xl w-full p-4 sm:p-5 shadow-2xl relative space-y-3.5 my-auto max-h-[100dvh] sm:max-h-[96vh] flex flex-col overflow-hidden">
         <button
           onClick={onClose}
           className="absolute top-3.5 right-3.5 p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer z-10"
@@ -315,18 +315,18 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-3 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl cursor-pointer"
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl cursor-pointer flex items-center justify-center"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={selectedMemberIds.length === 0}
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl shadow cursor-pointer transition-colors"
+              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl shadow cursor-pointer transition-colors flex items-center justify-center"
             >
               {shiftStatus === 'concluido'
                 ? `Confirmar Plantão Concluído (+${hours}h)`
