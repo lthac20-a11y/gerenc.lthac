@@ -288,11 +288,13 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
   // Handler: Open Direct Add Shift
   const handleOpenDirectAdd = (e: React.MouseEvent, member: Member, monthKey: string) => {
     e.stopPropagation();
+    const mm = String(selectedMonthIndex + 1).padStart(2, '0');
+    const dd = String(new Date().getDate()).padStart(2, '0');
     setDirectAddModal({
       isOpen: true,
       member,
       monthKey,
-      date: '02/10',
+      date: `${dd}/${mm}`,
     });
     setDirectShiftHours(12);
     setDirectShiftStatus('concluido');
@@ -471,8 +473,38 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
           Registro rápido de plantões, faltas (FJ/FNJ) e acesso direto à ficha individual dos ligantes.
         </p>
 
+        {/* Menu Superior de Seleção de Mês (< Mês / Ano >) */}
+        <div className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 mt-3">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0 active:scale-95 flex items-center justify-center"
+            title="Mês anterior"
+            aria-label="Mês anterior"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div className="flex items-center justify-center gap-2 px-2 min-w-0">
+            <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="text-xs sm:text-sm font-bold text-white font-display tracking-wide capitalize truncate">
+              {activeMonthFormatted}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0 active:scale-95 flex items-center justify-center"
+            title="Próximo mês"
+            aria-label="Próximo mês"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
         {/* Input de Pesquisa Rápida por Nome */}
-        <div className="relative mt-3">
+        <div className="relative mt-2.5">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -494,7 +526,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
       </div>
 
       {/* 2. MOBILE VIEW: RESPONSIVE MEMBER SHIFT CARDS (< 768px) */}
-      <div className="block md:hidden space-y-2.5 pb-20">
+      <div className="block md:hidden space-y-2.5 pb-24">
         {filteredMembers.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-center text-slate-400">
             <User className="w-8 h-8 text-slate-600 mx-auto mb-2" />
@@ -505,7 +537,14 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
           filteredMembers.map(member => {
             const activeWarnings = member.warnings.filter(w => w.active).length;
             const pendingRep = member.replacements.filter(r => !r.completed).length;
-            const shiftsInCurrentMonth = member.shifts.filter(s => (s.monthKey || 'out/26') === activeMonthKey);
+
+            // Filtro de plantões do integrante para o mês selecionado
+            const monthlyShifts = member.shifts
+              .filter(s => {
+                const sMonth = (s.monthKey || parseDateToShiftParts(s.date, s.monthKey).monthKey || 'out/26').toLowerCase();
+                return sMonth === activeMonthKey.toLowerCase();
+              })
+              .sort((a, b) => parseShiftDateToTimestamp(a.date) - parseShiftDateToTimestamp(b.date));
 
             return (
               <div
@@ -546,7 +585,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                   </div>
                 </div>
 
-                {/* Linha Inferior: Botão Compacto integrado dentro do padding do cartão (pb-3 pt-2) */}
+                {/* Linha de Ações: Lançar Plantão + Ficha */}
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
                   {isCoordination && (
                     <button
@@ -567,6 +606,64 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
                     <User className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Ficha</span>
                   </button>
+                </div>
+
+                {/* Listagem de Plantões Realizados no Mês Selecionado */}
+                <div className="pt-2 border-t border-slate-800/60">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Plantões no Mês ({monthlyShifts.length})
+                    </span>
+                  </div>
+
+                  {monthlyShifts.length === 0 ? (
+                    <p className="text-[11px] text-slate-500 italic py-1">
+                      Nenhum plantão registrado neste mês.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {monthlyShifts.map((shift) => {
+                        const formattedDate = shift.date.length > 5 && shift.date.includes('/')
+                          ? shift.date.slice(0, 5)
+                          : shift.date;
+
+                        return (
+                          <div
+                            key={shift.id}
+                            className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-950/40 border border-slate-800/40 text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-mono font-semibold text-slate-200 shrink-0">
+                                {formattedDate}
+                              </span>
+                              <span className="text-slate-400 font-medium shrink-0">
+                                {shift.type === 'reposicao' ? 'Reposição' : 'Plantão'}
+                              </span>
+                              {shift.shiftStatus === 'falta_injustificada' ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/25 whitespace-nowrap">
+                                  Falta Não Just.
+                                </span>
+                              ) : shift.shiftStatus === 'falta_justificada' ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25 whitespace-nowrap">
+                                  Falta Justificada
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                                  Concluído
+                                </span>
+                              )}
+                            </div>
+
+                            <span className={`font-mono font-bold shrink-0 ml-2 ${
+                              shift.hours > 0 ? 'text-emerald-400' : 'text-slate-500'
+                            }`}>
+                              {shift.hours > 0 ? `+${shift.hours}h` : '0h'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             );
