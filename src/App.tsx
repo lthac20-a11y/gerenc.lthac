@@ -208,6 +208,18 @@ export default function App() {
   // Current View Tab
   const [currentTab, setCurrentTab] = useState<string>('members');
 
+  // Dynamic Coordination Member Detection
+  const coordinationMemberNames = (config.leadershipBoard || []).map(m => m.name.toLowerCase().trim());
+  
+  const isMemberCoordinator = (member: Member) => {
+    return coordinationMemberNames.includes(member.name.toLowerCase().trim());
+  };
+
+  // Visibility Filter
+  const visibleMembers = isCoordination 
+    ? members 
+    : members.filter(m => !isMemberCoordinator(m));
+
   // Modals
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [certificateMember, setCertificateMember] = useState<Member | null>(null);
@@ -745,7 +757,7 @@ export default function App() {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 overflow-x-hidden min-h-screen flex flex-col justify-between">
         {currentTab === 'dashboard' && (
           <DashboardView
-            members={members}
+            members={visibleMembers}
             config={config}
             onSelectMember={setSelectedMember}
             onNavigateTab={setCurrentTab}
@@ -759,7 +771,7 @@ export default function App() {
 
         {currentTab === 'members' && (
           <MembersView
-            members={members}
+            members={visibleMembers}
             config={config}
             onSelectMember={setSelectedMember}
             onOpenAddMember={() => setIsAddMemberOpen(true)}
@@ -787,7 +799,7 @@ export default function App() {
 
         {currentTab === 'schedule' && (
           <MonthlyScheduleView
-            members={members}
+            members={visibleMembers}
             config={config}
             onSelectMember={setSelectedMember}
             onUpdateMember={handleUpdateMember}
@@ -798,7 +810,7 @@ export default function App() {
 
         {currentTab === 'replacements' && (
           <ReplacementsView
-            members={members}
+            members={visibleMembers}
             onUpdateMember={handleUpdateMember}
             onSelectMember={setSelectedMember}
           />
@@ -806,7 +818,7 @@ export default function App() {
 
         {currentTab === 'disciplinary' && (
           <DisciplinaryView
-            members={members}
+            members={visibleMembers}
             onUpdateMember={handleUpdateMember}
             onSelectMember={setSelectedMember}
           />
@@ -814,7 +826,7 @@ export default function App() {
 
         {currentTab === 'certificates' && (
           <CertificatesView
-            members={members}
+            members={visibleMembers}
             config={config}
             onUpdateConfig={handleSaveConfig}
             onOpenCertificateModal={setCertificateMember}

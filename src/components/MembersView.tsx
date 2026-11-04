@@ -88,10 +88,10 @@ export const MembersView: React.FC<MembersViewProps> = ({
         return isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150);
       }
       if (filterType === 'ligantes') {
-        return member.role === 'Ligante';
+        return !config.leadershipBoard?.some(l => l.name.toLowerCase().trim() === member.name.toLowerCase().trim());
       }
       if (filterType === 'coordenacao') {
-        return member.role === 'Coordenação';
+        return config.leadershipBoard?.some(l => l.name.toLowerCase().trim() === member.name.toLowerCase().trim());
       }
       if (filterType === 'reposicoes') {
         return member.replacements.some(r => !r.completed);
@@ -224,6 +224,13 @@ export const MembersView: React.FC<MembersViewProps> = ({
               { id: 'aptos', label: 'Aptos', count: eligibleCount },
               { id: 'reposicoes', label: 'Reposição', count: pendingReplacementsCount },
               { id: 'advertencias', label: 'Com ADV', count: activeMembers.filter(m => m.warnings.some(w => w.active)).length },
+              ...(isCoordination 
+                ? [
+                    { id: 'ligantes', label: 'Ligantes', count: activeMembers.filter(m => !config.leadershipBoard?.some(l => l.name.toLowerCase().trim() === m.name.toLowerCase().trim())).length },
+                    { id: 'coordenacao', label: 'Coordenação', count: activeMembers.filter(m => config.leadershipBoard?.some(l => l.name.toLowerCase().trim() === m.name.toLowerCase().trim())).length }
+                  ]
+                : []
+              )
             ].map((tab) => {
               const isActive = filterType === tab.id;
               return (

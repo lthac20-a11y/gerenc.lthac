@@ -18,7 +18,8 @@ import {
   Settings,
   RotateCcw,
   Save,
-  X
+  X,
+  Pencil
 } from 'lucide-react';
 import { Member, LeagueConfig, LeadershipMemberConfig } from '../types/league';
 import { DEFAULT_LEADERSHIP_BOARD, DEFAULT_LEAGUE_CONFIG } from '../data/initialData';
@@ -129,10 +130,20 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'aptos' | 'inaptos' | 'pending-cert' | 'pending-badge'>('all');
   
-  // Estado do Modal de Edição de Metas e Parâmetros
+  // Estado do Modal de Parâmetros
   const [isEditConfigModalOpen, setIsEditConfigModalOpen] = useState(false);
-  const [configForm, setConfigForm] = useState<LeagueConfig>({ ...config });
-  const [feedbackSaved, setFeedbackSaved] = useState(false);
+  
+  // Estado do Modal de Edição de Cargo da Diretoria
+  const [editingLeader, setEditingLeader] = useState<LeadershipMemberConfig | null>(null);
+  const [editLeaderName, setEditLeaderName] = useState('');
+  const [editLeaderDescription, setEditLeaderDescription] = useState('');
+
+  // Lista de membros ativos para o dropdown
+  const activeMembers = useMemo(() => {
+    return members
+      .filter(m => !Boolean(m.isBaixa || m.status === 'baixa'))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [members]);
 
   // Lista atual da diretoria (a partir da config ou do padrão)
   const currentLeadershipBoard: LeadershipMemberConfig[] = useMemo(() => {
@@ -142,26 +153,35 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
     return DEFAULT_LEADERSHIP_BOARD;
   }, [config.leadershipBoard]);
 
-  // Sincronizar estado do formulário de metas quando a config global muda
-  useEffect(() => {
-    setConfigForm({ ...config });
-  }, [config, isEditConfigModalOpen]);
+  const handleOpenEditLeader = (leader: LeadershipMemberConfig) => {
+    setEditingLeader(leader);
+    setEditLeaderName(leader.name);
+    setEditLeaderDescription(leader.description);
+  };
 
-  // Salvar alterações no Modal de Metas e Parâmetros
-  const handleSaveConfig = (e: React.FormEvent) => {
+  const handleSaveLeader = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateConfig(configForm);
-    setFeedbackSaved(true);
-    setTimeout(() => {
-      setFeedbackSaved(false);
-      setIsEditConfigModalOpen(false);
-    }, 1000);
+    if (!editingLeader) return;
+
+    const updatedBoard = currentLeadershipBoard.map(item => {
+      if (item.id === editingLeader.id) {
+        return {
+          ...item,
+          name: editLeaderName,
+          description: editLeaderDescription,
+        };
+      }
+      return item;
+    });
+
+    onUpdateConfig({
+      ...config,
+      leadershipBoard: updatedBoard,
+    });
+    setEditingLeader(null);
   };
 
-  // Restaurar padrões globais
-  const handleResetConfigDefaults = () => {
-    setConfigForm({ ...DEFAULT_LEAGUE_CONFIG });
-  };
+
 
   // Mapa de aptidão para cada membro dinamicamente atualizado
   const memberAptitudes = useMemo(() => {
@@ -306,7 +326,7 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
                 }`}
               >
                 <div>
-                  {/* Topo do Card: Ícone e Badge do Cargo */}
+                  {/* Topo do Card: Ícone, Badge do Cargo e Botão de Editar */}
                   <div className="flex items-center justify-between gap-3 mb-3.5">
                     <div className={`p-2.5 rounded-xl border ${iconColor}`}>
                       <IconComponent className="w-5 h-5" />
@@ -315,6 +335,16 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
                       <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${badgeColor}`}>
                         {leader.badge || defaultBadge}
                       </span>
+                      {isCoordination && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditLeader(leader)}
+                          className="text-slate-400 hover:text-emerald-400 p-2 rounded-lg transition-colors cursor-pointer"
+                          title="Editar cargo da diretoria"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -346,22 +376,91 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
         </div>
       </section>
 
-      {/* ========================================================= */}
-      {/* 3. MODAL DE EDIÇÃO DE METAS E PARÂMETROS GLOBAIS          */}
-      {/* Modal de Configuração de Parâmetros e Metas */}
-      {isEditConfigModalOpen && (
-        <LeagueSettingsModal
-          config={config}
-          onClose={() => setIsEditConfigModalOpen(false)}
-          onSaveConfig={(newConfig) => {
-            onUpdateConfig(newConfig);
-            setIsEditConfigModalOpen(false);
-          }}
-          onResetToDefaults={() => {
-            onUpdateConfig(DEFAULT_LEAGUE_CONFIG);
-            setIsEditConfigModalOpen(false);
-          }}
-        />
+      {/* Modal de Edição de Cargo da Diretoria */}
+      {editingLeader && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+          <form
+            onSubmit={handleSaveLeader}
+            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Editar Cargo da Diretoria</h3>
+                  <p className="text-[11px] text-slate-400">{editingLeader.role}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingLeader(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Cargo</label>
+                <input
+                  type="text"
+                  disabled
+                  value={editingLeader.role}
+                  className="w-full px-3 py-2 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-400 font-medium text-xs cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Membro Responsável *</label>
+                <select
+                  required
+                  value={editLeaderName}
+                  onChange={e => setEditLeaderName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-medium text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="">Selecione o membro responsável...</option>
+                  {activeMembers.map(m => (
+                    <option key={m.id} value={m.name} className="bg-slate-900 text-white">
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">Listando apenas integrantes ativos da liga.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Descrição da Função *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={editLeaderDescription}
+                  onChange={e => setEditLeaderDescription(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setEditingLeader(null)}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs cursor-pointer shadow-md flex items-center gap-1.5"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Salvar Alterações</span>
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

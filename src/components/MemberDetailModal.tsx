@@ -126,11 +126,8 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
 
   // Edit member form states
   const [editName, setEditName] = useState(member.name);
-  const [editRole, setEditRole] = useState<RoleInLeague>(member.role === 'Coordenação' ? 'Coordenação' : 'Ligante');
-  const [editStatus, setEditStatus] = useState<MemberStatus>(member.status);
   const [editEntryDate, setEditEntryDate] = useState(member.entryDate);
   const [editHours, setEditHours] = useState(member.accumulatedHours);
-  const [editEmail, setEditEmail] = useState(member.email || '');
 
   // Active time calculation
   const activeTime = useMemo(() => calculateActiveTime(member.entryDate), [member.entryDate]);
@@ -158,11 +155,8 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
     onUpdateMember({
       ...member,
       name: editName,
-      role: editRole,
-      status: editStatus,
       entryDate: editEntryDate,
       accumulatedHours: Number(editHours),
-      email: editEmail,
     });
     setIsEditingProfile(false);
   };
@@ -553,33 +547,7 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Cargo na Liga</label>
-                  <select
-                    value={editRole}
-                    onChange={e => setEditRole(e.target.value as RoleInLeague)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
-                  >
-                    <option value="Ligante">Ligante</option>
-                    <option value="Coordenação">Coordenação</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Status</label>
-                  <select
-                    value={editStatus}
-                    onChange={e => setEditStatus(e.target.value as MemberStatus)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
-                  >
-                    <option value="ativo">Ativo</option>
-                    <option value="inativo">Inativo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Data de Admissão</label>
                   <input
@@ -601,17 +569,6 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">E-mail</label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={e => setEditEmail(e.target.value)}
-                  placeholder="exemplo@email.com"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
-                />
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-800">
