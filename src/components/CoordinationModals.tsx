@@ -242,8 +242,8 @@ export const QuickReplacementModal: React.FC<QuickReplacementModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-md w-full p-4 sm:p-5 shadow-2xl relative space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-md w-full p-4 sm:p-5 shadow-2xl relative space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-modalPop">
         <button
           type="button"
           onClick={onClose}
@@ -468,8 +468,8 @@ export const QuickWarningModal: React.FC<QuickWarningModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-md w-full p-4 sm:p-5 shadow-2xl relative space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-full sm:max-w-md w-full p-4 sm:p-5 shadow-2xl relative space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-modalPop">
         <button
           type="button"
           onClick={onClose}
@@ -595,8 +595,8 @@ export const DeleteMemberModal: React.FC<DeleteMemberModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-rose-900/60 rounded-2xl max-w-md w-full p-5 shadow-2xl relative space-y-4 my-auto">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-rose-900/60 rounded-2xl max-w-md w-full p-5 shadow-2xl relative space-y-4 my-auto animate-modalPop">
         <button
           type="button"
           onClick={onClose}

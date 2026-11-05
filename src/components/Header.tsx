@@ -128,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
                     key={item.id}
                     type="button"
                     onClick={() => handleSelectNav(item.id)}
-                    className={`group flex-none flex items-center gap-1.5 px-3 lg:px-3.5 py-2.5 text-xs lg:text-sm font-semibold rounded-xl whitespace-nowrap transition-all duration-200 cursor-pointer ${
+                    className={`group flex-none flex items-center gap-1.5 px-3 lg:px-3.5 py-2.5 text-xs lg:text-sm font-semibold rounded-xl whitespace-nowrap transition-all duration-200 active:scale-[0.98] cursor-pointer ${
                       isActive
                         ? 'bg-[#152538] text-white border border-emerald-500/50 shadow-md font-bold ring-1 ring-emerald-500/30'
                         : 'text-slate-200 hover:text-white hover:bg-slate-800/80 border border-slate-800/60 hover:border-slate-700 shadow-xs'
@@ -238,12 +238,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="fixed inset-0 z-50 md:hidden flex justify-end">
           {/* Backdrop */}
           <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity animate-fadeIn"
+            className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn"
             onClick={() => setIsMobileMenuOpen(false)}
           />
 
           {/* Drawer Panel */}
-          <div className="relative w-[85%] max-w-sm h-full bg-[#0b131f] border-l border-slate-800 p-4 shadow-2xl flex flex-col justify-between overflow-y-auto animate-slideLeft z-10">
+          <div className="relative w-[85%] max-w-sm h-full bg-[#0b131f] border-l border-slate-800 p-4 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-250 ease-out animate-slideLeft z-10">
             <div className="space-y-4">
               {/* Drawer Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -410,29 +410,31 @@ export const Header: React.FC<HeaderProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => handleSelectNav(item.id)}
-                className={`flex flex-col items-center justify-center min-h-[44px] h-full py-1 px-0.5 relative transition-all duration-150 cursor-pointer ${
+                className={`flex flex-col items-center justify-center min-h-[44px] h-full py-1 px-0.5 relative transition-all duration-200 active:scale-[0.98] cursor-pointer ${
                   isActive ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'
                 }`}
                 title={item.label}
               >
                 {/* Active Indicator Top Glow */}
                 {isActive && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)] transition-all duration-200" />
                 )}
 
                 <div className="relative mb-0.5">
-                  <Icon className={`w-4 h-4 transition-transform ${isActive ? 'scale-110 text-emerald-400' : 'text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 transition-all duration-200 ${isActive ? 'scale-110 text-emerald-400' : 'text-slate-400'}`} />
                   
                   {/* Badge Notification Dots */}
                   {item.alert !== undefined && (
-                    <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950 animate-pulse" />
+                    <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950 animate-pulse transition-all duration-200" />
                   )}
                   {item.highlight !== undefined && (
-                    <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-slate-950" />
+                    <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-slate-950 transition-all duration-200" />
                   )}
                 </div>
 
-                <span className="text-[9px] tracking-tight truncate w-full text-center leading-tight">
+                <span className={`text-[9px] tracking-tight truncate w-full text-center leading-tight transition-all duration-200 ${
+                  isActive ? 'text-emerald-400 font-bold' : 'text-slate-400'
+                }`}>
                   {item.shortLabel}
                 </span>
               </button>

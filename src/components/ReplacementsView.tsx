@@ -676,22 +676,19 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                     )}
 
                     <div className="p-1.5 text-slate-400 bg-slate-800/80 rounded-md border border-slate-700/60 shrink-0">
-                      {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-slate-400" />
-                      )}
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-emerald-400' : 'text-slate-400'}`} />
                     </div>
                   </div>
                 </div>
 
                 {/* Expandable Body with Replacement Items */}
-                {isExpanded && (
-                  <div className="p-2.5 sm:p-3 bg-slate-950/60 border-t border-slate-800/80 space-y-2 animate-fadeIn">
-                    <div className="flex items-center justify-between pb-1 border-b border-slate-800/60 text-[10px] text-slate-400 uppercase font-semibold tracking-wider">
-                      <span>Lista de Pendências de Reposição ({replacements.length})</span>
-                      <span>Membro ID: {member.id}</span>
-                    </div>
+                <div className={`grid transition-[grid-template-rows,opacity] duration-250 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                  <div className="overflow-hidden">
+                    <div className="p-2.5 sm:p-3 bg-slate-950/60 border-t border-slate-800/80 space-y-2">
+                      <div className="flex items-center justify-between pb-1 border-b border-slate-800/60 text-[10px] text-slate-400 uppercase font-semibold tracking-wider">
+                        <span>Lista de Pendências de Reposição ({replacements.length})</span>
+                        <span>Membro ID: {member.id}</span>
+                      </div>
 
                     {replacements.length === 0 ? (
                       <div className="p-3 text-center text-slate-400 text-xs italic bg-slate-900/40 rounded-lg">
@@ -931,8 +928,9 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                       );
                     })
                     )}
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             );
           })
@@ -941,8 +939,8 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
 
       {/* Add Replacement Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-modalPop">
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <Repeat className="w-5 h-5 text-amber-400" />
               Agendar Reposição de Plantão

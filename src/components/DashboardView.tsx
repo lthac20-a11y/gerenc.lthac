@@ -76,7 +76,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Members */}
         <div 
           onClick={() => onNavigateTab('members')}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all cursor-pointer group"
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all duration-150 active:scale-[0.98] cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">MEMBROS</span>
@@ -99,7 +99,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Accumulated Hours */}
         <div 
           onClick={() => onNavigateTab('schedule')}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all cursor-pointer group"
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all duration-150 active:scale-[0.98] cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">HORAS GRAVADAS</span>
@@ -124,7 +124,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Eligible Members */}
         <div 
           onClick={() => onNavigateTab(isCoordination ? 'certificates' : 'members')}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all cursor-pointer group"
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all duration-150 active:scale-[0.98] cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">APTOS</span>
@@ -147,7 +147,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Pending Replacements */}
         <div 
           onClick={() => onNavigateTab('replacements')}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all cursor-pointer group"
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-2xl p-3 shadow-sm transition-all duration-150 active:scale-[0.98] cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">REPOSIÇÕES</span>

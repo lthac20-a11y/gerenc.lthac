@@ -212,7 +212,8 @@ export default function App() {
   const coordinationMemberNames = (config.leadershipBoard || []).map(m => m.name.toLowerCase().trim());
   
   const isMemberCoordinator = (member: Member) => {
-    return coordinationMemberNames.includes(member.name.toLowerCase().trim());
+    return coordinationMemberNames.includes(member.name.toLowerCase().trim()) || 
+      (config.leadershipBoard || []).some(b => (b as any).memberId === member.id);
   };
 
   // Visibility Filter
@@ -755,85 +756,87 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 overflow-x-hidden min-h-screen flex flex-col justify-between">
-        {currentTab === 'dashboard' && (
-          <DashboardView
-            members={visibleMembers}
-            config={config}
-            onSelectMember={setSelectedMember}
-            onNavigateTab={setCurrentTab}
-            onOpenAddMember={() => setIsAddMemberOpen(true)}
-            onOpenAddShift={() => {
-              setShiftModalMemberIds([]);
-              setIsAddShiftOpen(true);
-            }}
-          />
-        )}
+        <div key={currentTab} className="animate-fadeSlideUp w-full flex-1 flex flex-col justify-between">
+          {currentTab === 'dashboard' && (
+            <DashboardView
+              members={visibleMembers}
+              config={config}
+              onSelectMember={setSelectedMember}
+              onNavigateTab={setCurrentTab}
+              onOpenAddMember={() => setIsAddMemberOpen(true)}
+              onOpenAddShift={() => {
+                setShiftModalMemberIds([]);
+                setIsAddShiftOpen(true);
+              }}
+            />
+          )}
 
-        {currentTab === 'members' && (
-          <MembersView
-            members={visibleMembers}
-            config={config}
-            onSelectMember={setSelectedMember}
-            onOpenAddMember={() => setIsAddMemberOpen(true)}
-            onOpenCertificateModal={setCertificateMember}
-            onUpdateMember={handleUpdateMember}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            onOpenAddShiftForMember={(memberId) => {
-              setShiftModalMemberIds([memberId]);
-              setIsAddShiftOpen(true);
-            }}
-            onOpenAddReplacementForMember={(memberId) => {
-              setQuickRepMemberId(memberId);
-              setIsQuickRepOpen(true);
-            }}
-            onOpenAddWarningForMember={(memberId) => {
-              setQuickWarnMemberId(memberId);
-              setIsQuickWarnOpen(true);
-            }}
-            onRequestDeleteMember={(memberId) => {
-              setDeleteTargetMemberId(memberId);
-              setIsDeleteMemberOpen(true);
-            }}
-          />
-        )}
+          {currentTab === 'members' && (
+            <MembersView
+              members={visibleMembers}
+              config={config}
+              onSelectMember={setSelectedMember}
+              onOpenAddMember={() => setIsAddMemberOpen(true)}
+              onOpenCertificateModal={setCertificateMember}
+              onUpdateMember={handleUpdateMember}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenAddShiftForMember={(memberId) => {
+                setShiftModalMemberIds([memberId]);
+                setIsAddShiftOpen(true);
+              }}
+              onOpenAddReplacementForMember={(memberId) => {
+                setQuickRepMemberId(memberId);
+                setIsQuickRepOpen(true);
+              }}
+              onOpenAddWarningForMember={(memberId) => {
+                setQuickWarnMemberId(memberId);
+                setIsQuickWarnOpen(true);
+              }}
+              onRequestDeleteMember={(memberId) => {
+                setDeleteTargetMemberId(memberId);
+                setIsDeleteMemberOpen(true);
+              }}
+            />
+          )}
 
-        {currentTab === 'schedule' && (
-          <MonthlyScheduleView
-            members={visibleMembers}
-            config={config}
-            onSelectMember={setSelectedMember}
-            onUpdateMember={handleUpdateMember}
-            onOpenAddShift={() => setIsAddShiftOpen(true)}
-            onOpenCertificateModal={setCertificateMember}
-          />
-        )}
+          {currentTab === 'schedule' && (
+            <MonthlyScheduleView
+              members={visibleMembers}
+              config={config}
+              onSelectMember={setSelectedMember}
+              onUpdateMember={handleUpdateMember}
+              onOpenAddShift={() => setIsAddShiftOpen(true)}
+              onOpenCertificateModal={setCertificateMember}
+            />
+          )}
 
-        {currentTab === 'replacements' && (
-          <ReplacementsView
-            members={visibleMembers}
-            onUpdateMember={handleUpdateMember}
-            onSelectMember={setSelectedMember}
-          />
-        )}
+          {currentTab === 'replacements' && (
+            <ReplacementsView
+              members={visibleMembers}
+              onUpdateMember={handleUpdateMember}
+              onSelectMember={setSelectedMember}
+            />
+          )}
 
-        {currentTab === 'disciplinary' && (
-          <DisciplinaryView
-            members={visibleMembers}
-            onUpdateMember={handleUpdateMember}
-            onSelectMember={setSelectedMember}
-          />
-        )}
+          {currentTab === 'disciplinary' && (
+            <DisciplinaryView
+              members={visibleMembers}
+              onUpdateMember={handleUpdateMember}
+              onSelectMember={setSelectedMember}
+            />
+          )}
 
-        {currentTab === 'certificates' && (
-          <CertificatesView
-            members={visibleMembers}
-            config={config}
-            onUpdateConfig={handleSaveConfig}
-            onOpenCertificateModal={setCertificateMember}
-            onSelectMember={setSelectedMember}
-            onUpdateMember={handleUpdateMember}
-          />
-        )}
+          {currentTab === 'certificates' && (
+            <CertificatesView
+              members={visibleMembers}
+              config={config}
+              onUpdateConfig={handleSaveConfig}
+              onOpenCertificateModal={setCertificateMember}
+              onSelectMember={setSelectedMember}
+              onUpdateMember={handleUpdateMember}
+            />
+          )}
+        </div>
       </main>
 
       {/* Footer */}

@@ -378,10 +378,10 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
 
       {/* Modal de Edição de Cargo da Diretoria */}
       {editingLeader && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4">
           <form
             onSubmit={handleSaveLeader}
-            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 my-auto"
+            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 my-auto animate-modalPop"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">

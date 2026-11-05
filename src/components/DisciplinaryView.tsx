@@ -314,19 +314,16 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
                       </span>
                     )}
 
-                    <div className="p-1 text-slate-400 hover:text-white rounded-md transition-transform shrink-0">
-                      {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
+                    <div className="p-1 text-slate-400 hover:text-white rounded-md shrink-0">
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-emerald-400' : 'text-slate-400'}`} />
                     </div>
                   </div>
                 </div>
 
                 {/* Accordion Body: Compact Warning Records List */}
-                {isExpanded && (
-                  <div className="border-t border-slate-800/80 bg-slate-950/60 p-2.5 sm:p-3 space-y-2 transition-all">
+                <div className={`grid transition-[grid-template-rows,opacity] duration-250 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                  <div className="overflow-hidden">
+                    <div className="border-t border-slate-800/80 bg-slate-950/60 p-2.5 sm:p-3 space-y-2">
                     <div className="flex items-center justify-between gap-2 whitespace-nowrap mb-2">
                       <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                         OCORRÊNCIAS ({totalCount})
@@ -423,7 +420,8 @@ export const DisciplinaryView: React.FC<DisciplinaryViewProps> = ({
                       ))}
                     </div>
                   </div>
-                )}
+                </div>
+              </div>
               </div>
             );
           })

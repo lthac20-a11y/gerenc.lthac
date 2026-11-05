@@ -13,7 +13,8 @@ import {
   X,
   UserMinus,
   CreditCard,
-  XCircle
+  XCircle,
+  ChevronDown
 } from 'lucide-react';
 import { Member, LeagueConfig, RoleInLeague, MemberStatus } from '../types/league';
 import { 
@@ -52,6 +53,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<'name' | 'hours-desc' | 'hours-asc' | 'date-desc' | 'adv'>('hours-desc');
+  const [isBaixasOpen, setIsBaixasOpen] = useState(false);
 
   // State for direct member edit modal
   const [editingMember, setEditingMember] = useState<Member | null>(null);
@@ -238,7 +240,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setFilterType(tab.id)}
-                  className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer shrink-0 active:scale-95 ${
+                  className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150 flex items-center gap-1 cursor-pointer shrink-0 active:scale-[0.98] ${
                     isActive
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
                       : 'bg-slate-950/60 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
@@ -272,7 +274,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
       </div>
 
       {/* MOBILE MEMBER CARDS (< 768px) - ULTRA COMPACT HIGH DENSITY VIEW */}
-      <div className="block md:hidden space-y-2 sm:space-y-2.5">
+      <div key={`mobile-${filterType}`} className="block md:hidden space-y-2 sm:space-y-2.5 animate-fadeSlideUp">
         {filteredActiveMembers.length === 0 ? (
           <div className="p-6 text-center text-slate-300 text-xs sm:text-sm bg-slate-900 border border-slate-800 rounded-xl">
             Nenhum integrante ativo encontrado com os filtros selecionados.
@@ -346,7 +348,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                     </div>
                     <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800/80">
                       <div
-                        className={`h-full rounded-full transition-all duration-300 ${
+                        className={`h-full rounded-full transition-all duration-500 ease-out ${
                           isGoalMet ? 'bg-emerald-500' : 'bg-emerald-400'
                         }`}
                         style={{ width: `${progressPercent}%` }}
@@ -370,7 +372,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                     </div>
                     <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800/80">
                       <div
-                        className="h-full rounded-full transition-all duration-300 bg-blue-500"
+                        className="h-full rounded-full transition-all duration-500 ease-out bg-blue-500"
                         style={{ width: `${timePercent}%` }}
                       />
                     </div>
@@ -415,23 +417,33 @@ export const MembersView: React.FC<MembersViewProps> = ({
         {/* Seção Baixas Mobile */}
         {baixaMembers.length > 0 && (
           <div className="mt-6 pt-4 border-t border-slate-800/80 space-y-2.5">
-            <div className="flex items-center justify-between pb-1">
+            <div 
+              onClick={() => setIsBaixasOpen(!isBaixasOpen)}
+              className="flex items-center justify-between pb-1 cursor-pointer select-none group"
+            >
               <div className="flex items-center gap-2">
                 <div className="p-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md">
                   <UserMinus className="w-3.5 h-3.5" />
                 </div>
-                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-display">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-display group-hover:text-white transition-colors">
                   Baixas ({filteredBaixaMembers.length})
                 </h3>
               </div>
-              <span className="text-[10px] text-slate-500 font-medium">Inativação reversível</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-slate-500 font-medium">Inativação reversível</span>
+                <div className="p-1 text-slate-400 group-hover:text-white rounded-md shrink-0">
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isBaixasOpen ? 'rotate-180 text-rose-400' : 'text-slate-400'}`} />
+                </div>
+              </div>
             </div>
 
-            {filteredBaixaMembers.length === 0 ? (
-              <p className="text-xs text-slate-500 italic p-3 bg-slate-900/40 rounded-xl border border-slate-800/60 text-center">
-                Nenhum integrante em baixa encontrado na busca.
-              </p>
-            ) : (
+            <div className={`grid transition-[grid-template-rows,opacity] duration-250 ease-in-out ${isBaixasOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+              <div className="overflow-hidden space-y-2.5">
+                {filteredBaixaMembers.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic p-3 bg-slate-900/40 rounded-xl border border-slate-800/60 text-center">
+                    Nenhum integrante em baixa encontrado na busca.
+                  </p>
+                ) : (
               filteredBaixaMembers.map((member) => {
                 const isApto = isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150);
                 const isCertEmitted = Boolean(member.certificateEmitted);
@@ -530,12 +542,14 @@ export const MembersView: React.FC<MembersViewProps> = ({
                 );
               })
             )}
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       {/* SPREADSHEET TABLE (DESKTOP VIEW >= 768px) */}
-      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+      <div key={`desktop-${filterType}`} className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg animate-fadeSlideUp">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1060px]">
             <thead>
@@ -622,7 +636,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
                           </div>
                           <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
                             <div 
-                              className={`h-full rounded-full transition-all duration-300 ${
+                              className={`h-full rounded-full transition-all duration-500 ease-out ${
                                 isGoalMet ? 'bg-emerald-500' : 'bg-teal-400'
                               }`}
                               style={{ width: `${progressPercent}%` }}
@@ -716,131 +730,143 @@ export const MembersView: React.FC<MembersViewProps> = ({
       {/* SPREADSHEET TABLE DE BAIXAS (DESKTOP VIEW >= 768px) */}
       {baixaMembers.length > 0 && (
         <div className="hidden md:block space-y-3 pt-2">
-          <div className="flex items-center justify-between px-1">
+          <div 
+            onClick={() => setIsBaixasOpen(!isBaixasOpen)}
+            className="flex items-center justify-between px-1 cursor-pointer select-none group"
+          >
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg">
                 <UserMinus className="w-4 h-4" />
               </div>
-              <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider font-display">
+              <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider font-display group-hover:text-white transition-colors">
                 Integrantes em Baixa ({filteredBaixaMembers.length})
               </h3>
             </div>
-            <span className="text-xs text-slate-500 font-medium">Inativação reversível • Histórico preservado</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-medium">Inativação reversível • Histórico preservado</span>
+              <div className="p-1 text-slate-400 group-hover:text-white rounded-md shrink-0">
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isBaixasOpen ? 'rotate-180 text-rose-400' : 'text-slate-400'}`} />
+              </div>
+            </div>
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[900px]">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/80 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-3.5 px-4 text-left w-[24%]">Integrante Inativo</th>
-                    <th className="py-3.5 px-3 text-left w-[16%]">Admissão & Carga</th>
-                    <th className="py-3.5 px-3 text-center w-[14%]">Aptidão</th>
-                    <th className="py-3.5 px-3 text-center w-[23%]">Controle Certificado</th>
-                    <th className="py-3.5 px-3 text-center w-[23%]">Devolução Crachá</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-xs">
-                  {filteredBaixaMembers.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-500 italic">
-                        Nenhum integrante em baixa encontrado na busca.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredBaixaMembers.map((member) => {
-                      const isApto = isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150);
-                      const isCertEmitted = Boolean(member.certificateEmitted);
-                      const isBadgeCollected = Boolean(member.badgeCollected);
-
-                      return (
-                        <tr
-                          key={member.id}
-                          onClick={() => onSelectMember(member)}
-                          className="hover:bg-slate-800/40 transition-colors group cursor-pointer opacity-90 hover:opacity-100"
-                        >
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs shrink-0 font-display">
-                                {member.name.charAt(0)}
-                              </div>
-                              <div className="min-w-0">
-                                <span className="font-bold text-slate-300 group-hover:text-emerald-400 transition-colors text-sm line-through decoration-slate-600 block truncate">
-                                  {member.name}
-                                </span>
-                                <span className="text-[10px] text-rose-400/90 font-semibold uppercase">Em Baixa</span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 font-mono text-slate-300 whitespace-nowrap">
-                            <div className="text-xs">{member.entryDate}</div>
-                            <div className="text-emerald-400 font-bold">{member.accumulatedHours}h</div>
-                          </td>
-                          <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                            {isApto ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Apto ✓</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
-                                <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                                <span>Inapto</span>
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              disabled={!isCoordination || !onUpdateMember}
-                              onClick={() => {
-                                if (onUpdateMember) {
-                                  onUpdateMember({
-                                    ...member,
-                                    certificateEmitted: !member.certificateEmitted,
-                                  });
-                                }
-                              }}
-                              className={`px-3 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
-                                isCertEmitted
-                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
-                              } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
-                            >
-                              <Award className="w-3.5 h-3.5" />
-                              <span>{isCertEmitted ? 'Cert. Emitido ✓' : 'Cert. Pendente'}</span>
-                            </button>
-                          </td>
-                          <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              disabled={!isCoordination || !onUpdateMember}
-                              onClick={() => {
-                                if (onUpdateMember) {
-                                  const nextCollected = !member.badgeCollected;
-                                  onUpdateMember({
-                                    ...member,
-                                    badgeCollected: nextCollected,
-                                    badgeCollectedDate: nextCollected ? new Date().toISOString().split('T')[0] : undefined,
-                                  });
-                                }
-                              }}
-                              className={`px-3 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
-                                isBadgeCollected
-                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
-                              } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
-                            >
-                              <CreditCard className="w-3.5 h-3.5" />
-                              <span>{isBadgeCollected ? 'Crachá Devolvido ✓' : 'Crachá Pendente'}</span>
-                            </button>
+          <div className={`grid transition-[grid-template-rows,opacity] duration-250 ease-in-out ${isBaixasOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+            <div className="overflow-hidden">
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[900px]">
+                    <thead>
+                      <tr className="border-b border-slate-800 bg-slate-950/80 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <th className="py-3.5 px-4 text-left w-[24%]">Integrante Inativo</th>
+                        <th className="py-3.5 px-3 text-left w-[16%]">Admissão & Carga</th>
+                        <th className="py-3.5 px-3 text-center w-[14%]">Aptidão</th>
+                        <th className="py-3.5 px-3 text-center w-[23%]">Controle Certificado</th>
+                        <th className="py-3.5 px-3 text-center w-[23%]">Devolução Crachá</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-xs">
+                      {filteredBaixaMembers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-slate-500 italic">
+                            Nenhum integrante em baixa encontrado na busca.
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                      ) : (
+                        filteredBaixaMembers.map((member) => {
+                          const isApto = isMemberEligibleForCertificate(member, config.minHoursForCertificate || 150);
+                          const isCertEmitted = Boolean(member.certificateEmitted);
+                          const isBadgeCollected = Boolean(member.badgeCollected);
+
+                          return (
+                            <tr
+                              key={member.id}
+                              onClick={() => onSelectMember(member)}
+                              className="hover:bg-slate-800/40 transition-colors group cursor-pointer opacity-90 hover:opacity-100"
+                            >
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs shrink-0 font-display">
+                                    {member.name.charAt(0)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="font-bold text-slate-300 group-hover:text-emerald-400 transition-colors text-sm line-through decoration-slate-600 block truncate">
+                                      {member.name}
+                                    </span>
+                                    <span className="text-[10px] text-rose-400/90 font-semibold uppercase">Em Baixa</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-3 font-mono text-slate-300 whitespace-nowrap">
+                                <div className="text-xs">{member.entryDate}</div>
+                                <div className="text-emerald-400 font-bold">{member.accumulatedHours}h</div>
+                              </td>
+                              <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                {isApto ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Apto ✓</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                    <span>Inapto</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  disabled={!isCoordination || !onUpdateMember}
+                                  onClick={() => {
+                                    if (onUpdateMember) {
+                                      onUpdateMember({
+                                        ...member,
+                                        certificateEmitted: !member.certificateEmitted,
+                                      });
+                                    }
+                                  }}
+                                  className={`px-3 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                                    isCertEmitted
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                      : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                                  } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                                >
+                                  <Award className="w-3.5 h-3.5" />
+                                  <span>{isCertEmitted ? 'Cert. Emitido ✓' : 'Cert. Pendente'}</span>
+                                </button>
+                              </td>
+                              <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  disabled={!isCoordination || !onUpdateMember}
+                                  onClick={() => {
+                                    if (onUpdateMember) {
+                                      const nextCollected = !member.badgeCollected;
+                                      onUpdateMember({
+                                        ...member,
+                                        badgeCollected: nextCollected,
+                                        badgeCollectedDate: nextCollected ? new Date().toISOString().split('T')[0] : undefined,
+                                      });
+                                    }
+                                  }}
+                                  className={`px-3 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                                    isBadgeCollected
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                      : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                                  } ${!isCoordination ? 'cursor-default opacity-80' : ''}`}
+                                >
+                                  <CreditCard className="w-3.5 h-3.5" />
+                                  <span>{isBadgeCollected ? 'Crachá Devolvido ✓' : 'Crachá Pendente'}</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -848,8 +874,8 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* Direct Edit Member Modal Dialog (Triggered by pencil on member cards/rows) */}
       {editingMember && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-scaleUp">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-modalPop">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">

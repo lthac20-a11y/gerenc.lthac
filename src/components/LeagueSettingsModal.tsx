@@ -25,10 +25,10 @@ export const LeagueSettingsModal: React.FC<LeagueSettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs transition-opacity duration-200 flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
       <form
         onSubmit={handleSubmit}
-        className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl overflow-hidden relative my-auto"
+        className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl overflow-hidden relative my-auto animate-modalPop"
       >
         {/* Cabeçalho Enxuto (1 Linha) - Fixado no topo */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950 shrink-0">

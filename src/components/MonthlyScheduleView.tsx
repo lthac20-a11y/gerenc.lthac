@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Calendar, 
   Search, 
@@ -229,8 +229,16 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'todos' | 'ligantes' | 'coordenacao'>('todos');
   const [roleFilter, setRoleFilter] = useState<'all' | 'Ligante' | 'Coordenação'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'with_shifts' | 'with_rep' | 'with_adv'>('all');
+
+  // Enforce Ligantes-only when user leaves admin/coordination mode
+  useEffect(() => {
+    if (!isCoordination) {
+      setCategoryFilter('todos');
+    }
+  }, [isCoordination]);
 
   // Slide-over Drawer State
   const [drawerMember, setDrawerMember] = useState<Member | null>(null);
@@ -297,12 +305,52 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
     }
   };
 
-  // Filtered members list (exclui integrantes em baixa das escalas ativas)
-  const filteredMembers = useMemo(() => {
-    return members.filter(m => {
-      // 0. Excluir integrantes em baixa das escalas ativas da Planilha
-      if (m.isBaixa || m.status === 'baixa') return false;
+  // 1. Dynamic Coordination Member Detection based on Diretoria leadershipBoard
+  const isMemberCoordinator = useMemo(() => {
+    const boardMemberNames = (config?.leadershipBoard || []).map(b => b.name.toLowerCase().trim());
+    return (m: Member) => {
+      const name = m.name.toLowerCase().trim();
+      return boardMemberNames.includes(name) || (config?.leadershipBoard || []).some(b => (b as any).memberId === m.id);
+    };
+  }, [config?.leadershipBoard]);
 
+  // Active members (excluding baixas)
+  const activeMembers = useMemo(() => {
+    return members.filter(m => !m.isBaixa && m.status !== 'baixa');
+  }, [members]);
+
+  const ligantesMembers = useMemo(() => {
+    return activeMembers.filter(m => !isMemberCoordinator(m));
+  }, [activeMembers, isMemberCoordinator]);
+
+  const coordinationMembers = useMemo(() => {
+    return activeMembers.filter(m => isMemberCoordinator(m));
+  }, [activeMembers, isMemberCoordinator]);
+
+  // Base list of members according to authorization and category filter
+  const baseCategoryMembers = useMemo(() => {
+    if (!isCoordination) {
+      // Non-admin mode: strictly only Ligantes (completely hide board members)
+      return ligantesMembers;
+    }
+    if (categoryFilter === 'ligantes') return ligantesMembers;
+    if (categoryFilter === 'coordenacao') return coordinationMembers;
+    return activeMembers;
+  }, [isCoordination, categoryFilter, ligantesMembers, coordinationMembers, activeMembers]);
+
+  // Badge count displayed next to "Controle de Plantões"
+  const badgeCount = useMemo(() => {
+    if (!isCoordination) {
+      return ligantesMembers.length;
+    }
+    if (categoryFilter === 'ligantes') return ligantesMembers.length;
+    if (categoryFilter === 'coordenacao') return coordinationMembers.length;
+    return activeMembers.length;
+  }, [isCoordination, categoryFilter, ligantesMembers.length, coordinationMembers.length, activeMembers.length]);
+
+  // Filtered members list
+  const filteredMembers = useMemo(() => {
+    return baseCategoryMembers.filter(m => {
       // 1. Search filter
       const matchesSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase());
       if (!matchesSearch) return false;
@@ -324,7 +372,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
 
       return true;
     });
-  }, [members, searchTerm, roleFilter, statusFilter, activeMonthKey]);
+  }, [baseCategoryMembers, searchTerm, roleFilter, statusFilter, activeMonthKey]);
 
   // Compute Columns to Display according to ViewMode
   const displayedMonths = useMemo(() => {
@@ -342,9 +390,9 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
     let totalShifts = 0;
     let totalHours = 0;
     let membersWithShifts = 0;
-    const activeMembers = members.filter(m => !m.isBaixa && m.status !== 'baixa');
+    const statsMembers = !isCoordination ? ligantesMembers : activeMembers;
 
-    activeMembers.forEach(m => {
+    statsMembers.forEach(m => {
       const shiftsInPeriod = m.shifts.filter(s => displayedMonths.some(dm => isShiftInMonthKey(s, dm)));
       if (shiftsInPeriod.length > 0) {
         membersWithShifts++;
@@ -361,10 +409,10 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
       totalShifts,
       totalHours,
       membersWithShifts,
-      activeMembersCount: activeMembers.length,
-      occupancyRate: activeMembers.length > 0 ? Math.round((membersWithShifts / activeMembers.length) * 100) : 0,
+      activeMembersCount: statsMembers.length,
+      occupancyRate: statsMembers.length > 0 ? Math.round((membersWithShifts / statsMembers.length) * 100) : 0,
     };
-  }, [members, displayedMonths, activeMonthKey]);
+  }, [isCoordination, ligantesMembers, activeMembers, displayedMonths]);
 
   // Handler: Open Direct Add Shift
   const handleOpenDirectAdd = (e: React.MouseEvent, member: Member, monthKey: string) => {
@@ -445,7 +493,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
             </h2>
           </div>
           <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-950 text-slate-300 border border-slate-800 font-mono shrink-0">
-            {members.length} membros
+            {badgeCount} membros
           </span>
         </div>
 
@@ -459,7 +507,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0 active:scale-95 flex items-center justify-center"
+            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-all duration-150 cursor-pointer shrink-0 active:scale-[0.98] flex items-center justify-center"
             title="Mês anterior"
             aria-label="Mês anterior"
           >
@@ -476,7 +524,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
           <button
             type="button"
             onClick={handleNextMonth}
-            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0 active:scale-95 flex items-center justify-center"
+            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-all duration-150 cursor-pointer shrink-0 active:scale-[0.98] flex items-center justify-center"
             title="Próximo mês"
             aria-label="Próximo mês"
           >
@@ -504,10 +552,40 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
             </button>
           )}
         </div>
+
+        {/* Barra de Filtros por Categoria Exclusiva para Coordenação/Editor (Modo Admin) */}
+        {isCoordination && (
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pt-2.5 w-full flex-nowrap">
+            {[
+              { id: 'todos', label: 'Todos', count: activeMembers.length },
+              { id: 'ligantes', label: 'Ligantes', count: ligantesMembers.length },
+              { id: 'coordenacao', label: 'Coordenação', count: coordinationMembers.length },
+            ].map((tab) => {
+              const isActive = categoryFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setCategoryFilter(tab.id as 'todos' | 'ligantes' | 'coordenacao')}
+                  className={`min-h-[32px] px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150 flex items-center gap-1 cursor-pointer shrink-0 active:scale-[0.98] ${
+                    isActive
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
+                      : 'bg-slate-950/60 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className={`text-[11px] font-mono tabular-nums ${isActive ? 'text-emerald-200 font-bold' : 'text-slate-400'}`}>
+                    ({tab.count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 2. MOBILE VIEW: RESPONSIVE MEMBER SHIFT CARDS (< 768px) */}
-      <div className="block md:hidden space-y-2.5 pb-24">
+      <div key={`mobile-${activeMonthKey}-${categoryFilter}`} className="block md:hidden space-y-2.5 pb-24 animate-fadeSlideUp">
         {filteredMembers.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-center text-slate-400">
             <User className="w-8 h-8 text-slate-600 mx-auto mb-2" />
@@ -665,7 +743,7 @@ export const MonthlyScheduleView: React.FC<MonthlyScheduleViewProps> = ({
       </div>
 
       {/* 2. MAIN SPREADSHEET TABLE WITH STICKY COLUMNS & HEADERS (DESKTOP >= 768px) */}
-      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden relative pb-20">
+      <div key={`desktop-${activeMonthKey}-${categoryFilter}`} className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden relative pb-20 animate-fadeSlideUp">
         <div className="overflow-x-auto max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 pb-16">
           <table className="w-full text-left border-collapse min-w-[950px]">
             {/* Sticky Top Header */}

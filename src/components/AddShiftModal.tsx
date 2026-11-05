@@ -118,8 +118,8 @@ export const AddShiftModal: React.FC<AddShiftModalProps> = ({
   const sampleDeadlineTwo = calculateReplacementDeadline(monthKey, 2);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-6 overflow-y-auto">
-      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl max-w-full sm:max-w-xl w-full p-4 sm:p-5 shadow-2xl relative space-y-3.5 my-auto max-h-[100dvh] sm:max-h-[96vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-0 sm:p-3 md:p-6 overflow-y-auto">
+      <div className="bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl max-w-full sm:max-w-xl w-full p-4 sm:p-5 shadow-2xl relative space-y-3.5 my-auto max-h-[100dvh] sm:max-h-[96vh] flex flex-col overflow-hidden animate-modalPop">
         <button
           onClick={onClose}
           className="absolute top-3.5 right-3.5 p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer z-10"

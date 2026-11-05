@@ -162,8 +162,8 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-fadeIn">
-      <div className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full shadow-2xl flex flex-col overflow-hidden animate-slideLeft">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn">
+      <div className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full shadow-2xl flex flex-col overflow-hidden transition-transform duration-250 ease-out animate-slideLeft">
         
         {/* 1. CABEÇALHO E IDENTIFICAÇÃO */}
         <div className="p-5 border-b border-slate-800 bg-slate-950/80 relative shrink-0">
@@ -514,8 +514,8 @@ export const MemberDetailModal: React.FC<MemberDetailModalProps> = ({
 
       {/* Submodal de Edição do Cadastro (Coordenação) */}
       {isEditingProfile && (
-        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-modalPop">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">

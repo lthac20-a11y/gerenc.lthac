@@ -80,8 +80,8 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full flex flex-col shadow-2xl overflow-hidden my-auto max-h-[96vh]">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-5xl w-full flex flex-col shadow-2xl overflow-hidden my-auto max-h-[96vh] animate-modalPop">
         
         {/* Top Control Bar */}
         <div className="p-3.5 sm:p-4 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 no-print">
