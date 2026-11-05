@@ -9,6 +9,7 @@ import {
   getMonthColumnsForYear 
 } from '../utils/dateUtils';
 import { CustomDatePicker } from './CustomDatePicker';
+import { ModalPortal } from './ModalPortal';
 
 export interface ShiftModalData {
   id?: string;
@@ -168,9 +169,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-70 bg-black/80 backdrop-blur-xs transition-opacity duration-200 flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-modalPop">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+        <div className="w-full max-w-md max-h-[85dvh] overflow-y-auto my-auto bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4 animate-modalPop">
         {/* Cabeçalho do Modal */}
         <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -369,7 +373,8 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             </div>
           </div>
         </form>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 };

@@ -24,6 +24,7 @@ import {
 } from '../utils/leagueCalculations';
 import { useAuth } from '../context/AuthContext';
 import { CustomDatePicker } from './CustomDatePicker';
+import { ModalPortal } from './ModalPortal';
 
 interface MembersViewProps {
   members: Member[];
@@ -874,8 +875,9 @@ export const MembersView: React.FC<MembersViewProps> = ({
 
       {/* Direct Edit Member Modal Dialog (Triggered by pencil on member cards/rows) */}
       {editingMember && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-4 my-auto max-h-[96dvh] flex flex-col overflow-y-auto animate-modalPop">
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-md max-h-[85dvh] overflow-y-auto my-auto bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-4 flex flex-col animate-modalPop">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
@@ -1016,6 +1018,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

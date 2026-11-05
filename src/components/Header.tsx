@@ -396,7 +396,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* NATIVE-LIKE MOBILE BOTTOM NAVIGATION BAR (< 768px) */}
       <nav 
-        className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-[#090f19]/95 backdrop-blur-lg border-t border-slate-800/90 shadow-[0_-8px_20px_rgba(0,0,0,0.5)] select-none no-print"
+        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-[#090f19]/95 backdrop-blur-lg border-t border-slate-800/90 shadow-[0_-8px_20px_rgba(0,0,0,0.5)] select-none no-print"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         aria-label="Navegação móvel inferior"
       >

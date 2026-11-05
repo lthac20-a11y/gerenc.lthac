@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Member, LeagueConfig, LeadershipMemberConfig } from '../types/league';
 import { DEFAULT_LEADERSHIP_BOARD, DEFAULT_LEAGUE_CONFIG } from '../data/initialData';
+import { ModalPortal } from './ModalPortal';
 import { useAuth } from '../context/AuthContext';
 import { LeagueSettingsModal } from './LeagueSettingsModal';
 
@@ -378,89 +379,91 @@ export const CertificatesView: React.FC<CertificatesViewProps> = ({
 
       {/* Modal de Edição de Cargo da Diretoria */}
       {editingLeader && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn flex items-center justify-center p-3 sm:p-4">
-          <form
-            onSubmit={handleSaveLeader}
-            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 my-auto animate-modalPop"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
-                  <Pencil className="w-4 h-4" />
+        <ModalPortal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+            <form
+              onSubmit={handleSaveLeader}
+              className="w-full max-w-md max-h-[85dvh] overflow-y-auto my-auto bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4 animate-modalPop"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                    <Pencil className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Editar Cargo da Diretoria</h3>
+                    <p className="text-[11px] text-slate-400">{editingLeader.role}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Editar Cargo da Diretoria</h3>
-                  <p className="text-[11px] text-slate-400">{editingLeader.role}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingLeader(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Cargo</label>
-                <input
-                  type="text"
-                  disabled
-                  value={editingLeader.role}
-                  className="w-full px-3 py-2 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-400 font-medium text-xs cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Membro Responsável *</label>
-                <select
-                  required
-                  value={editLeaderName}
-                  onChange={e => setEditLeaderName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-medium text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                <button
+                  type="button"
+                  onClick={() => setEditingLeader(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
                 >
-                  <option value="">Selecione o membro responsável...</option>
-                  {activeMembers.map(m => (
-                    <option key={m.id} value={m.name} className="bg-slate-900 text-white">
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">Listando apenas integrantes ativos da liga.</p>
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              <div>
-                <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Descrição da Função *</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={editLeaderDescription}
-                  onChange={e => setEditLeaderDescription(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
-                />
-              </div>
-            </div>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Cargo</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={editingLeader.role}
+                    className="w-full px-3 py-2 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-400 font-medium text-xs cursor-not-allowed"
+                  />
+                </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setEditingLeader(null)}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs cursor-pointer shadow-md flex items-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Salvar Alterações</span>
-              </button>
-            </div>
-          </form>
-        </div>
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Membro Responsável *</label>
+                  <select
+                    required
+                    value={editLeaderName}
+                    onChange={e => setEditLeaderName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-medium text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">Selecione o membro responsável...</option>
+                    {activeMembers.map(m => (
+                      <option key={m.id} value={m.name} className="bg-slate-900 text-white">
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">Listando apenas integrantes ativos da liga.</p>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-slate-300 uppercase font-semibold block mb-1">Descrição da Função *</label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={editLeaderDescription}
+                    onChange={e => setEditLeaderDescription(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingLeader(null)}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs cursor-pointer shadow-md flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Salvar Alterações</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );
