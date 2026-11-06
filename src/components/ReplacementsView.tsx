@@ -910,20 +910,14 @@ export const ReplacementsView: React.FC<ReplacementsViewProps> = ({
                                 </div>
                               )}
                             </div>
-                          ) : (
+                          ) : rep.completed ? (
                             <div className="shrink-0 self-end md:self-center">
-                              {rep.completed ? (
-                                <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  Horas Computadas
-                                </span>
-                              ) : (
-                                <span className="text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-lg font-semibold">
-                                  Reposição Pendente
-                                </span>
-                              )}
+                              <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-800/40">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Horas Computadas
+                              </span>
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       );
                     })
