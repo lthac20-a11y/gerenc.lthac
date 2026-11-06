@@ -3,21 +3,96 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Liga do Trauma Hospital Angelina Caron (LTHAC) - Gestão e Escalas</title>
+    <title>LTHAC</title>
     <meta name="description" content="Sistema de gestão de escalas de plantão, frequência, reposições e certificados da Liga do Trauma Hospital Angelina Caron (LTHAC)." />
-    <meta property="og:title" content="Liga do Trauma Hospital Angelina Caron (LTHAC) - Gestão e Escalas" />
+    <meta property="og:title" content="LTHAC" />
     <meta property="og:description" content="Sistema de gestão de escalas de plantão, frequência, reposições e certificados da Liga do Trauma Hospital Angelina Caron (LTHAC)." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+
     <!-- PWA & Mobile Web App Meta Tags -->
-    <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0b0f19" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="LTHAC">
+    <meta name="apple-mobile-web-app-title" content="LTHAC">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0b0f19">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="LTHAC" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='%2310b981'%3E%3Cpath d='M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm252.1 19.3l-40.6-111c-4.4-12.1-22.6-11.8-26.6 .4l-26.8 81.7L129 233.1c-4.8-9.4-18.6-9.1-23.1 .5l-26.1 55.9c-4.4 9.4 2.5 20.5 12.8 20.5H124c6.3 0 11.9-3.8 14.2-9.6l14.1-34.5 32.7 107.5c4.5 14.8 25.8 14.5 29.8-.4l39-106.8 19.7 54.3c4 11.1 14.5 18.5 26.4 18.5H416c11 0 20-9 20-20s-9-20-20-20H307.7l-55.6-153.2z'/%3E%3C/svg%3E">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='%2310b981'%3E%3Cpath d='M464 256A208 208 0 1 0 48 256a208 208 0 1 0 416 0zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm252.1 19.3l-40.6-111c-4.4-12.1-22.6-11.8-26.6 .4l-26.8 81.7L129 233.1c-4.8-9.4-18.6-9.1-23.1 .5l-26.1 55.9c-4.4 9.4 2.5 20.5 12.8 20.5H124c6.3 0 11.9-3.8 14.2-9.6l14.1-34.5 32.7 107.5c4.5 14.8 25.8 14.5 29.8-.4l39-106.8 19.7 54.3c4 11.1 14.5 18.5 26.4 18.5H416c11 0 20-9 20-20s-9-20-20-20H307.7l-55.6-153.2z'/%3E%3C/svg%3E">
+
+    <!-- Canvas Dynamic PNG Icon & Manifest Generator -->
+    <script>
+    (function() {
+      function generateLogoPNG(size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        // Fundo escuro arredondado (#0b0f19)
+        ctx.fillStyle = '#0b0f19';
+        ctx.fillRect(0, 0, size, size);
+
+        // Círculo central verde escuro suave
+        const pad = size * 0.1;
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = size * 0.05;
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, (size / 2) - pad, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Linha de pulso ECG verde (#10b981)
+        ctx.beginPath();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = size * 0.065;
+        ctx.moveTo(size * 0.20, size * 0.52);
+        ctx.lineTo(size * 0.34, size * 0.52);
+        ctx.lineTo(size * 0.42, size * 0.28);
+        ctx.lineTo(size * 0.53, size * 0.74);
+        ctx.lineTo(size * 0.62, size * 0.42);
+        ctx.lineTo(size * 0.68, size * 0.52);
+        ctx.lineTo(size * 0.80, size * 0.52);
+        ctx.stroke();
+
+        return canvas.toDataURL('image/png');
+      }
+
+      const icon192 = generateLogoPNG(192);
+      const icon512 = generateLogoPNG(512);
+
+      // Injetar links PNG reais no <head> para o atalho do Android e iOS
+      const links = [
+        { rel: 'icon', type: 'image/png', sizes: '192x192', href: icon192 },
+        { rel: 'icon', type: 'image/png', sizes: '512x512', href: icon512 },
+        { rel: 'shortcut icon', type: 'image/png', href: icon192 },
+        { rel: 'apple-touch-icon', sizes: '192x192', href: icon192 }
+      ];
+      links.forEach(attrs => {
+        const link = document.createElement('link');
+        Object.entries(attrs).forEach(([k, v]) => link.setAttribute(k, v));
+        document.head.appendChild(link);
+      });
+
+      // Gerar e vincular manifest com os PNGs em Base64
+      const manifest = {
+        name: 'Liga do Trauma - LTHAC',
+        short_name: 'LTHAC',
+        start_url: window.location.pathname,
+        scope: window.location.pathname,
+        display: 'standalone',
+        background_color: '#0b0f19',
+        theme_color: '#0b0f19',
+        icons: [
+          { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+        ]
+      };
+      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+      const manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = URL.createObjectURL(blob);
+      document.head.appendChild(manifestLink);
+    })();
+    </script>
 
     <!-- Google Fonts for Academic Certificate and clean UI typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
